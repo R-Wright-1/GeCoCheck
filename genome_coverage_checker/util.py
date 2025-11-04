@@ -139,14 +139,14 @@ def get_assembly_summaries(assembly_folder, all_domains, representative_only):
       if not os.path.exists(assembly_folder+'assembly_summary_'+group+'.txt'):
         command_download = 'wget -q ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/'+group+'/assembly_summary.txt -O '+assembly_folder+'assembly_summary_'+group+'.txt'
         dl = os.system(command_download)
-    assemblies_bacteria = pd.read_csv(assembly_folder+'assembly_summary_bacteria.txt', header=1, index_col=0, sep='\t', low_memory=False)
-    assemblies_archaea = pd.read_csv(assembly_folder+'assembly_summary_archaea.txt', header=1, index_col=0, sep='\t', low_memory=False)
+    assemblies_bacteria = pd.read_csv(assembly_folder+'assembly_summary_bacteria.txt', header=1, index_col=0, sep='\t', low_memory=False, on_bad_lines='skip')
+    assemblies_archaea = pd.read_csv(assembly_folder+'assembly_summary_archaea.txt', header=1, index_col=0, sep='\t', low_memory=False, on_bad_lines='skip')
     assemblies = pd.concat([assemblies_bacteria, assemblies_archaea])
   else:
     if not os.path.exists(assembly_folder+'assembly_summary_refseq.txt'):
       command_download = 'wget -q ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt -O '+assembly_folder+'assembly_summary_refseq.txt'
       dl = os.system(command_download)
-    assemblies = pd.read_csv(assembly_folder+'assembly_summary_refseq.txt', header=1, index_col=0, sep='\t', low_memory=False)
+    assemblies = pd.read_csv(assembly_folder+'assembly_summary_refseq.txt', header=1, index_col=0, sep='\t', low_memory=False, on_bad_lines='skip')
   assemblies_ref = assemblies[assemblies['refseq_category'] == 'reference genome']
   assemblies_rep = assemblies[assemblies['refseq_category'] == 'representative genome']
   if representative_only:
