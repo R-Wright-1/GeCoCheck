@@ -1,4 +1,4 @@
-# Genome Coverage Checker (GeCoCheck) <align="right" width="300px" alt="Logo 2025" src="https://github.com/user-attachments/assets/68b1822c-e6c2-4de9-b42c-f82300ef8aa8" />
+# Genome Coverage Checker (GeCoCheck) <img src="https://github.com/user-attachments/assets/68b1822c-e6c2-4de9-b42c-f82300ef8aa8" align="right" width="300px" alt="Logo 2025" />
 
 This is a repository for storing the code needed to check the genome coverage for taxa identified by Kraken 2 in metagenome samples. We welcome any feedback on it. 
 
