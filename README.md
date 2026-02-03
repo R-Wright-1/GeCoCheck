@@ -2,5 +2,5 @@
 
 This is a repository for storing the code needed to check the genome coverage for taxa identified by Kraken 2 in metagenome samples. We welcome any feedback on it. 
 
-You can find details on installation and instructions for running in [the Wiki](https://github.com/R-Wright-1/genome_coverage_checker/wiki).
+You can find details on installation and instructions for running in [the Wiki](https://github.com/R-Wright-1/genome_coverage_checker/wiki) and can read our preprint on it [here](https://doi.org/10.21203/rs.3.rs-8224247/v1).
 
