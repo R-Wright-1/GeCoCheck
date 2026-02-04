@@ -106,7 +106,6 @@ def plot_genome_coverage(axes_genome, axes_id, sample_name, taxid, length, progr
       try:
         genome_covered[g] += 1
       except:
-        print(sample_name, taxid)
         genome_covered[g] = 1
   k, vals = list(genome_covered.keys()), list(genome_covered.values())
   groups = [vals[x:x+granularity] for x in range(0, len(vals), granularity)]
@@ -370,6 +369,8 @@ def multiple_taxa_in_one_sample(save_name, project_folder, taxid, sample, top_ta
         rl = cc_out.loc[plot_order[s], 'Reference genome length (bp)']
         rng = math.ceil(rl/1000000)
         t = plt.xticks([(x*1000000)/rl for x in range(rng)], [str(float(x)) for x in range(rng)])
+        plt.sca(ax_identity)
+        plt.xticks([])
       else:
         t = plt.xticks(xticks, [round(gen_means[int(x)]/1000000, 1) for x in xticks])
   
