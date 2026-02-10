@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/opt/anaconda3/envs/GeCoCheck-v0.0.4/bin/python3.13
 
 import os
 import pandas as pd
@@ -39,9 +39,12 @@ parser.add_argument('--coverage_program', dest='coverage_program', default='Bowt
                     help="Which of the programs was used for getting coverage across the genome. Default is Bowtie2.")
 parser.add_argument('--unchecked', dest='unchecked', default='unclassified', choices=['classified', 'unclassified'],
                     help="Whether taxids that were not checked by GeCoCheck should be classified or unclassified in the output. By default they are unclassified")
+parser.add_argument('--for_stratified_out', dest='for_stratified_out', default=False, action='store_true',
+                    help="Whether to write a second raw output file that doesn't have unverified taxa as unclassified but indicated that they are unverified")
+
 
 args = parser.parse_args()
-kraken_outraw_dir, gecocheck_out_dir, kraken_kreport_dir, sample_metadata, koutraw_filt_dir, project_name, samples_grouping, reads_or_genome_frac, coverage_program, unchecked, read_limit, genome_frac_limit = args.kraken_outraw_dir, args.gecocheck_out_dir, args.kraken_kreport_dir, args.sample_metadata, args.koutraw_filt_dir, args.project_name, args.samples_grouping, args.reads_or_genome_frac, args.coverage_program, args.unchecked, args.read_limit, args.genome_frac_limit
+kraken_outraw_dir, gecocheck_out_dir, kraken_kreport_dir, sample_metadata, koutraw_filt_dir, project_name, samples_grouping, reads_or_genome_frac, coverage_program, unchecked, read_limit, genome_frac_limit, for_stratified_out = args.kraken_outraw_dir, args.gecocheck_out_dir, args.kraken_kreport_dir, args.sample_metadata, args.koutraw_filt_dir, args.project_name, args.samples_grouping, args.reads_or_genome_frac, args.coverage_program, args.unchecked, args.read_limit, args.genome_frac_limit, args.for_stratified_out
 
 if not kraken_outraw_dir:
   sys.exit('You need to give the --kraken_outraw_dir')
@@ -52,8 +55,8 @@ if not kraken_kreport_dir:
 if not sample_metadata:
   sys.exit('You need to give the --sample_metadata file name')
 if not koutraw_filt_dir:
-  print("You didn't give the --koutraw_filt_dir. Setting this to "+gecocheck_out_dir+"kraken2_outraw_checked")
-  koutraw_filt_dir = gecocheck_out_dir+"kraken2_outraw_checked"
+  print("You didn't give the --koutraw_filt_dir. Setting this to "+gecocheck_out_dir+"/kraken2_outraw_checked/")
+  koutraw_filt_dir = gecocheck_out_dir+"/kraken2_outraw_checked/"
 if not project_name:
   sys.exit('You need to give the --project_name. This should be the same as what you used for running GeCoCheck')
 
@@ -63,7 +66,7 @@ else:
   read_limit = int(read_limit)
 if reads_or_genome_frac == 'genome_frac' and not genome_frac_limit:
   sys.exit('"You have chosen to filter on the reference genome fraction (%) present so you must give a value for --genome_frac_limit. This can be any number between 0-100')
-elif reads_or_genome_frac == 'genome_frac:
+elif reads_or_genome_frac == 'genome_frac':
   genome_frac_limit = float(genome_frac_limit)
   
 metadata = pd.read_csv(sample_metadata, index_col=0, header=0)
@@ -75,8 +78,7 @@ if not os.path.exists(koutraw_filt_dir):
 else:
   files = os.listdir(koutraw_filt_dir)
   if len(files) != 0:
-    print(koutraw_filt_dir+"isn't empty! Please try again with an empty directory")
-    #sys.exit()
+    sys.exit(koutraw_filt_dir+"isn't empty! Please try again with an empty directory")
 
 sample_groups, groups_samples_in = {}, {}
 for r in range(len(metadata.index.values)):
@@ -141,7 +143,7 @@ for sample_name in metadata.index.values:
       else:
         children[sp] = [this_row[4]]
 
-samples_keeping = {}
+samples_keeping, samples_keeping_species = {}, {}
 for sample in metadata.index.values:
   if samples_grouping == 'overall':
     this_gecocheck_out = gecocheck_out.loc[project_name, :].set_index('taxid')
@@ -158,6 +160,7 @@ for sample in metadata.index.values:
   #print(sample+': '+str(len(verified))+' taxids verified by GeCoCheck')
   if unchecked == 'classified':
     verified.update(above_limit_not_checked)
+  samples_keeping_species[sample] = set(verified)
   strains = set()
   for tid in verified:
     if tid in children:
@@ -196,6 +199,22 @@ for sample in metadata.index.values:
           changed += 1
       count += 1
   print(sample+': '+str(count)+' reads in file. '+str(classified_initially)+' ('+str(round((classified_initially/count)*100, 2))+'%) were classified and '+str(unclassified)+' ('+str(round((unclassified/count)*100, 2))+'%) were unclassified. An additional '+str(changed)+' ('+str(round((changed/count)*100, 2))+'%) are now unclassified.')
-  
+  if for_stratified_out:
+    print('Making outraw file that can be used with workflow to generate stratified taxonomy/function output')
+    out_fn = koutraw_filt_dir+sample+'_unverified.kraken'
+    with open(in_fn, 'r') as infile, open(out_fn, 'w') as outfile:
+      for line in infile:
+        if line[0] == 'U':
+          quiet_write = outfile.write(line)
+        else:
+          working_line = line.split('\t')
+          tid = working_line[2].split('(taxid ')[1].replace(')', '')
+          if tid in samples_keeping[sample]:
+            quiet_write = outfile.write(line)
+          else:
+            working_line[2] = 'Unverified '+working_line[2]
+            working_line = '\t'.join(working_line)
+            quiet_write = outfile.write(working_line)
+
 sys.stdout.write("Finished filtering reads in samples.\n")
 sys.stdout.write("Running time: --- %s seconds ---\n\n" % str(round((time.time() - start_time), 2)))
