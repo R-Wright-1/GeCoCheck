@@ -41,10 +41,12 @@ parser.add_argument('--unchecked', dest='unchecked', default='unclassified', cho
                     help="Whether taxids that were not checked by GeCoCheck should be classified or unclassified in the output. By default they are unclassified")
 parser.add_argument('--for_stratified_out', dest='for_stratified_out', default=False, action='store_true',
                     help="Whether to write a second raw output file that doesn't have unverified taxa as unclassified but indicated that they are unverified")
+parser.add_argument('--kraken_database', dest='kraken_database', default=None,
+                    help="The directory containing the kraken database including a folder with taxonomy information")
 
 
 args = parser.parse_args()
-kraken_outraw_dir, gecocheck_out_dir, kraken_kreport_dir, sample_metadata, koutraw_filt_dir, project_name, samples_grouping, reads_or_genome_frac, coverage_program, unchecked, read_limit, genome_frac_limit, for_stratified_out = args.kraken_outraw_dir, args.gecocheck_out_dir, args.kraken_kreport_dir, args.sample_metadata, args.koutraw_filt_dir, args.project_name, args.samples_grouping, args.reads_or_genome_frac, args.coverage_program, args.unchecked, args.read_limit, args.genome_frac_limit, args.for_stratified_out
+kraken_outraw_dir, gecocheck_out_dir, kraken_kreport_dir, sample_metadata, koutraw_filt_dir, project_name, samples_grouping, reads_or_genome_frac, coverage_program, unchecked, read_limit, genome_frac_limit, for_stratified_out, kraken_database = args.kraken_outraw_dir, args.gecocheck_out_dir, args.kraken_kreport_dir, args.sample_metadata, args.koutraw_filt_dir, args.project_name, args.samples_grouping, args.reads_or_genome_frac, args.coverage_program, args.unchecked, args.read_limit, args.genome_frac_limit, args.for_stratified_out, args.kraken_database
 
 if not kraken_outraw_dir:
   sys.exit('You need to give the --kraken_outraw_dir')
@@ -65,12 +67,18 @@ if reads_or_genome_frac == 'reads' and not read_limit:
 else:
   read_limit = int(read_limit)
 if reads_or_genome_frac == 'genome_frac' and not genome_frac_limit:
-  sys.exit('"You have chosen to filter on the reference genome fraction (%) present so you must give a value for --genome_frac_limit. This can be any number between 0-100')
+  sys.exit('You have chosen to filter on the reference genome fraction (%) present so you must give a value for --genome_frac_limit. This can be any number between 0-100')
 elif reads_or_genome_frac == 'genome_frac':
   genome_frac_limit = float(genome_frac_limit)
   
+if not kraken_database:
+  sys.exit('Please give a path to the kraken database used')
+if not os.path.exists(kraken_database+'/taxonomy/nodes.dmp'):
+  sys.exit('The nodes.dmp file doesn not exist inside your kraken database. You need a file called: '+kraken_database+'/taxonomy/nodes.dmp')
+  
 metadata = pd.read_csv(sample_metadata, index_col=0, header=0)
 gecocheck_out = pd.read_csv(gecocheck_out_dir+'/coverage_checker_output.tsv', index_col=0, header=0, sep='\t')
+gecocheck_out['taxid'] = gecocheck_out['taxid'].map(str)
 
 if not os.path.exists(koutraw_filt_dir):
   mk = os.system('mkdir '+koutraw_filt_dir)
@@ -127,59 +135,82 @@ kreports.loc[list(below_limit), 'GeCoCheck'] = 'Not checked: below read limit'
 kreports.loc[list(above_limit_not_checked), 'GeCoCheck'] = 'Not checked: wrong domain or not found'
 
 kreports.to_csv(gecocheck_out_dir+project_name+'_combined_kreport_filtering.csv')
-  
-children, parents = {}, {}
-for sample_name in metadata.index.values:
-  krep = kraken_kreport_dir+sample_name+'.kreport'
-  if not os.path.exists(krep): krep = kraken_kreport_dir+sample_name+'_0.0.kreport'
-  for row in open(krep, 'r'):
-    this_row = row.split('\t')
-    if this_row[3] == 'S':
-      sp = this_row[4]
-    elif this_row[3] in ['S1', 'S2', 'S3', 'S4']:
-      parents[this_row[4]] = sp
-      if sp in children:
-        children[sp].append(this_row[4])
-      else:
-        children[sp] = [this_row[4]]
+        
+tax_dict, children, levels = {}, {}, set()
+for row in open(kraken_database+'/taxonomy/nodes.dmp', 'r'):
+  this_row = row.split('\t|\t')
+  tax_dict[this_row[0]] = [this_row[2]]
+  if this_row[1] in children: children[this_row[1]].append(this_row[0])
+  else: children[this_row[1]] = [this_row[0]]
+  levels.add(this_row[2])
 
-samples_keeping, samples_keeping_species = {}, {}
-for sample in metadata.index.values:
-  if samples_grouping == 'overall':
-    this_gecocheck_out = gecocheck_out.loc[project_name, :].set_index('taxid')
-  elif samples_grouping == 'per_grouping':
-    this_gecocheck_out = gecocheck_out.loc[groups_samples_in[sample], :].set_index('taxid')
+for tid in tax_dict:
+  if tax_dict[tid][0] != 'species': continue
+  if tid in children:
+    tax_dict[tid].append(set(children[tid]))
   else:
-    this_gecocheck_out = gecocheck_out.loc[sample, :].set_index('taxid')
+    tax_dict[tid].append(set())
+
+samples_keeping = {}
+if samples_grouping == 'overall':
+  this_gecocheck_out = gecocheck_out.loc[project_name, :].set_index('taxid')
   if reads_or_genome_frac == 'reads':
     this_gecocheck_out = this_gecocheck_out[this_gecocheck_out[coverage_program+' reads mapped'] >= read_limit]
   elif reads_or_genome_frac == 'genome_frac':
     this_gecocheck_out = this_gecocheck_out[this_gecocheck_out[coverage_program+' genome fraction (%)'] >= genome_frac_limit]
-  this_gecocheck_out.index = this_gecocheck_out.index.map(str)
-  verified = set(list(this_gecocheck_out.index.values))
-  #print(sample+': '+str(len(verified))+' taxids verified by GeCoCheck')
-  if unchecked == 'classified':
-    verified.update(above_limit_not_checked)
-  samples_keeping_species[sample] = set(verified)
-  strains = set()
-  for tid in verified:
-    if tid in children:
-      strains.update(children[tid])
-  verified.update(strains)
-  samples_keeping[sample] = verified
-  #print(sample+': '+str(len(verified))+' taxids keeping classified')
-  
-#check all taxids string
-for sample in samples_keeping:
-  for tid in samples_keeping[sample]:
-    if not isinstance(tid, str):
-      print(tid)
+  kreports['Verified'] = 'Unverified'
+  kreports.loc[this_gecocheck_out.index.values, 'Verified'] = 'Verified'
+  keeping_tax = set(this_gecocheck_out.index.values)
+  keeping_tax_list = list(keeping_tax)
+  for tid in keeping_tax_list:
+    if tid in tax_dict:
+      for new_id in tax_dict[tid][1]:
+        keeping_tax.add(new_id)
+  for sample in metadata.index.values:
+    samples_keeping[sample] = keeping_tax
+else:
+  for sample in metadata.index.values:
+    if samples_grouping == 'per_grouping':
+      this_gecocheck_out = gecocheck_out.loc[groups_samples_in[sample], :].set_index('taxid')
+    else:
+      this_gecocheck_out = gecocheck_out.loc[sample, :].set_index('taxid')
+    if reads_or_genome_frac == 'reads':
+      this_gecocheck_out = this_gecocheck_out[this_gecocheck_out[coverage_program+' reads mapped'] >= read_limit]
+    elif reads_or_genome_frac == 'genome_frac':
+      this_gecocheck_out = this_gecocheck_out[this_gecocheck_out[coverage_program+' genome fraction (%)'] >= genome_frac_limit]
+    if samples_grouping == 'per_grouping':
+      if groups_samples_in[sample]+' Verified' not in kreports.columns:
+        kreports[groups_samples_in[sample]+' Verified'] = 'Unverified'
+        kreports.loc[this_gecocheck_out.index.values, groups_samples_in[sample]+' Verified'] = 'Verified'
+    else:
+      kreports[sample+' Verified'] = 'Unverified'
+      kreports.loc[this_gecocheck_out.index.values, sample+' Verified'] = 'Verified'
+    keeping_tax = set(this_gecocheck_out.index.values)
+    keeping_tax_list = list(keeping_tax)
+    for tid in keeping_tax_list:
+      if tid in tax_dict:
+        for new_id in tax_dict[tid][1]:
+          keeping_tax.add(new_id)
+    samples_keeping[sample] = keeping_tax
+
+print('Proportion of species-level classifications used for GeCoCheck:')
+print(kreports[kreports['GeCoCheck'] == 'Coverage checked'].drop(['Verified', 'GeCoCheck'], axis=1).sum(axis=0)/kreports.drop(['Verified', 'GeCoCheck'], axis=1).sum(axis=0))
+
+print('Proportion of species-level classifications verified with GeCoCheck:')
+print(kreports[kreports['Verified'] == 'Verified'].drop(['Verified', 'GeCoCheck'], axis=1).sum(axis=0)/kreports.drop(['Verified', 'GeCoCheck'], axis=1).sum(axis=0))
+
+kreports.to_csv(gecocheck_out_dir+project_name+'_combined_kreport_filtering_verified.csv')
+
+no_rank = ['clade', 'section', 'genotype', 'serogroup', 'no rank']
+ranks_sp_or_below = ['species subgroup', 'species', 'strain', 'varietas', 'forma specialis', 'subspecies', 'morph', 'forma', 'serotype', 'isolate', 'pathogroup', 'biotype']
+ranks_above_sp = ['family', 'superclass', 'subcohort', 'subkingdom', 'tribe', 'genus', 'infraclass', 'suborder', 'species group', 'superkingdom', 'superphylum', 'subclass', 'superorder', 'kingdom', 'cohort', 'subfamily', 'class', 'subphylum', 'infraorder', 'superfamily', 'subtribe', 'order', 'phylum', 'subgenus', 'series', 'parvorder', 'subsection']
+ranks_above_sp = set(ranks_above_sp)
 
 #process samples
 for sample in metadata.index.values:
   in_fn = kraken_outraw_dir+sample+'.kraken'
   out_fn = koutraw_filt_dir+sample+'.kraken'
-  count, changed, unclassified, classified_initially = 0, 0, 0, 0
+  count, changed, unclassified, classified_initially, above_species = 0, 0, 0, 0, 0
   with open(in_fn, 'r') as infile, open(out_fn, 'w') as outfile:
     for line in infile:
       if line[0] == 'U':
@@ -189,7 +220,10 @@ for sample in metadata.index.values:
         classified_initially += 1
         working_line = line.split('\t')
         tid = working_line[2].split('(taxid ')[1].replace(')', '')
-        if tid in samples_keeping[sample]:
+        if tax_dict[tid][0] in ranks_above_sp: 
+          above_species += 1
+          quiet_write = outfile.write(line)
+        elif tid in samples_keeping[sample]:
           quiet_write = outfile.write(line)
         else:
           working_line[0] = 'U'
@@ -198,7 +232,7 @@ for sample in metadata.index.values:
           quiet_write = outfile.write(working_line)
           changed += 1
       count += 1
-  print(sample+': '+str(count)+' reads in file. '+str(classified_initially)+' ('+str(round((classified_initially/count)*100, 2))+'%) were classified and '+str(unclassified)+' ('+str(round((unclassified/count)*100, 2))+'%) were unclassified. An additional '+str(changed)+' ('+str(round((changed/count)*100, 2))+'%) are now unclassified.')
+  print(sample+': '+str(count)+' reads in file. '+str(classified_initially)+' ('+str(round((classified_initially/count)*100, 2))+'%) were classified and '+str(unclassified)+' ('+str(round((unclassified/count)*100, 2))+'%) were unclassified. Initially, '+str(above_species)+' ('+str(round((above_species/count)*100, 2))+'%) reads were classified above the species level, and these remain classified. An additional '+str(changed)+' ('+str(round((changed/count)*100, 2))+'%) are now unclassified.')
   if for_stratified_out:
     print('Making outraw file that can be used with workflow to generate stratified taxonomy/function output')
     out_fn = koutraw_filt_dir+sample+'_unverified.kraken'
@@ -209,7 +243,9 @@ for sample in metadata.index.values:
         else:
           working_line = line.split('\t')
           tid = working_line[2].split('(taxid ')[1].replace(')', '')
-          if tid in samples_keeping[sample]:
+          if tax_dict[tid][0] in ranks_above_sp: 
+            quiet_write = outfile.write(line)
+          elif tid in samples_keeping[sample]:
             quiet_write = outfile.write(line)
           else:
             working_line[2] = 'Unverified '+working_line[2]
