@@ -251,7 +251,7 @@ def combine_convert_files(taxid, output_dir, samples, group_samples, n_proc, ski
   write_file(output_dir+'run_combine_files_commands.txt', combine_commands)
   os.system('python '+dirname(abspath(__file__))+'/run_commands_multiprocessing.py --commands '+output_dir+'run_combine_files_commands.txt --processors '+str(n_proc))
 
-  if not skip_duplicate_check:
+  if duplicate_check:
     #remove duplicate reads next
     remove_duplicates_files = [output_dir+'reads_mapped/'+f for f in os.listdir(output_dir+'reads_mapped/') if '.fq' in f]
     write_file(output_dir+'run_remove_duplicate_reads.txt', remove_duplicates_files)
@@ -271,7 +271,7 @@ def combine_convert_files(taxid, output_dir, samples, group_samples, n_proc, ski
   os.system('python '+dirname(abspath(__file__))+'/run_commands_multiprocessing.py --commands '+output_dir+'run_convert_fastq_commands.txt --processors '+str(n_proc))
   return all_files
 
-def combine_convert_files_paf(taxid, output_dir, samples, group_samples, n_proc, genome_dir, skip_duplicate_check=False, grouped_samples_only=False, no_grouped_samples=False):
+def combine_convert_files_paf(taxid, output_dir, samples, group_samples, n_proc, genome_dir, duplicate_check=False, grouped_samples_only=False, no_grouped_samples=False):
   combine_commands = []
   all_fastq = []
   groups_only = []

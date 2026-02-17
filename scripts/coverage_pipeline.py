@@ -50,8 +50,8 @@ parser.add_argument('--skip_coverage', dest='skip_coverage', default=False, acti
                     help="Whether to skip getting coverage for all reads across the genomes. This can take a little while, so you can skip it if you don't think that this output is useful to you.")
 parser.add_argument('--skip_cleanup', dest='skip_cleanup', default=False, action='store_true',
                     help="If you want to skip the cleanup. This will keep the intermediate files containing some of the commands run, e.g. for making bowtie2 databases. They may be helpful if you're trying to troubleshoot issues.")
-parser.add_argument('--skip_duplicate_check', dest='skip_duplicate_check', default=False, action='store_true',
-                    help="If you want to skip the check for duplicates within the fastq files. Note that this step can take a while if you have a lot of samples - it was mainly added because you'll get some weird results if you have duplicate reads in your files. This can happen if you rerun coverage checker using the same output folder.")
+parser.add_argument('--duplicate_check', dest='duplicate_check', default=False, action='store_true',
+                    help="If you want to do the check for duplicates within the fastq files. Note that this step can take a while if you have a lot of samples - it was mainly added because you'll get some weird results if you have duplicate reads in your files. This can happen if you rerun coverage checker using the same output folder.")
 parser.add_argument('--grouped_samples_only', dest='grouped_samples_only', default=False, action='store_true',
                     help="If you only want to run coverage checker with the grouped samples (i.e. by metadata variable or overall). The default is to run coverage checker individually on each sample, but if you only want the overall results, it will save on computation time to run coverage checker with this option.")
 parser.add_argument('--no_grouped_samples', dest='no_grouped_samples', default=False, action='store_true',
@@ -76,7 +76,7 @@ if bowtie2_db_dir == None:
 read_lim, read_mean, assembly_folder = args.read_lim, args.read_mean, args.assembly_folder
 if assembly_folder == None:
   assembly_folder = output_dir
-sample_metadata, species, project_name, rerun, all_domains, representative_only, skip_coverage, skip_cleanup, skip_duplicate_check, bowtie2_setting, grouped_samples_only, no_grouped_samples, coverage_program, mapq_threshold, identity_threshold = args.sample_metadata, args.species, args.project_name, args.rerun, args.all_domains, args.representative_only, args.skip_coverage, args.skip_cleanup, args.skip_duplicate_check, args.bowtie2_setting, args.grouped_samples_only, args.no_grouped_samples, args.coverage_program, args.mapq_threshold, args.identity_threshold
+sample_metadata, species, project_name, rerun, all_domains, representative_only, skip_coverage, skip_cleanup, duplicate_check, bowtie2_setting, grouped_samples_only, no_grouped_samples, coverage_program, mapq_threshold, identity_threshold = args.sample_metadata, args.species, args.project_name, args.rerun, args.all_domains, args.representative_only, args.skip_coverage, args.skip_cleanup, args.duplicate_check, args.bowtie2_setting, args.grouped_samples_only, args.no_grouped_samples, args.coverage_program, args.mapq_threshold, args.identity_threshold
 wd = os.getcwd()
 if read_lim == None: read_lim = 0
 else: read_lim = int(read_lim)
@@ -126,14 +126,14 @@ if cp != '0':
   if os.path.exists(output_dir+'/pickle_intermediates/args.pickle'):
     with open(output_dir+'/pickle_intermediates/args.pickle', 'rb') as f:
       all_args = pickle.load(f)
-    wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, all_domains, representative_only, skip_coverage, skip_cleanup, skip_duplicate_check, bowtie2_setting, grouped_samples_only, no_grouped_samples, coverage_program = all_args
+    wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, all_domains, representative_only, skip_coverage, skip_cleanup, duplicate_check, bowtie2_setting, grouped_samples_only, no_grouped_samples, coverage_program = all_args
     
 # 1. Run the initial checks
 if cp == '0':
   sys.stdout.write("Running initial checks\n")
   sys.stdout.flush()
   wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir = run_initial_checks(wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, genome_dir, bowtie2_db_dir, coverage_program, skip_coverage) #run all of the initial checks to ensure that all of the folders and files exist before starting to try and run anything
-  all_args = [wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, all_domains, representative_only, skip_coverage, skip_cleanup, skip_duplicate_check, bowtie2_setting, grouped_samples_only, no_grouped_samples, coverage_program]
+  all_args = [wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, all_domains, representative_only, skip_coverage, skip_cleanup, duplicate_check, bowtie2_setting, grouped_samples_only, no_grouped_samples, coverage_program]
   save_pickle(all_args, output_dir+'/pickle_intermediates/args.pickle')
   cp = update_checkpoint(output_dir, "1_initial_checks_run")
   sys.stdout.write("Completed check-point 1 initial checks\n\n")
@@ -207,7 +207,7 @@ else:
 if cp == "4_extracted_reads":
   sys.stdout.write("Combining files for each taxonomy ID\n")
   sys.stdout.flush()
-  all_files = combine_convert_files_paf(taxid, output_dir, samples, group_samples, n_proc, genome_dir, skip_duplicate_check, grouped_samples_only, no_grouped_samples)
+  all_files = combine_convert_files_paf(taxid, output_dir, samples, group_samples, n_proc, genome_dir, duplicate_check, grouped_samples_only, no_grouped_samples)
   save_pickle(all_files, output_dir+'/pickle_intermediates/all_files.pickle')
   cp = update_checkpoint(output_dir, "5_combined_files")
   sys.stdout.write("Completed check-point 5 combined files\n")
