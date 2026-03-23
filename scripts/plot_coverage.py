@@ -232,7 +232,8 @@ def single_taxon_across_samples(taxid, save_name, project_folder, coverage_progr
         xt = plt.xticks([])
       else:
         plt.sca(ax_identity)
-        xt = plt.xticks([70, 80, 90, 100])
+        if xt == 'NA': xt = plt.xticks([])
+        else: xt = plt.xticks([70, 80, 90, 100])
         xl = plt.xlabel('Identity (%)')
         plt.sca(ax_genome)
         t = plt.xticks(xticks, [round(gen_means[int(x)]/1000000, 1) for x in xticks])
@@ -269,7 +270,7 @@ def single_taxon_across_samples(taxid, save_name, project_folder, coverage_progr
         elif a == 1: plt.xticks([mins[a], maxs[a]])
 
   plt.subplots_adjust(hspace=0.7)
-  plt.savefig(save_name+' '+species_name+' '+coverage_program+'.png', bbox_inches='tight', dpi=dpi)
+  plt.savefig(save_name+'_'+species_name+'_'+coverage_program+'.png', bbox_inches='tight', dpi=dpi)
   return
 
 def multiple_taxa_in_one_sample(save_name, project_folder, taxid, sample, top_taxa, sort_by, coverage_program):
@@ -405,7 +406,7 @@ def multiple_taxa_in_one_sample(save_name, project_folder, taxid, sample, top_ta
         elif a == 1: plt.xticks([mins[a], maxs[a]])
 
   plt.subplots_adjust(hspace=1.2)
-  plt.savefig(save_name+' '+coverage_program+'.png', bbox_inches='tight', dpi=dpi)
+  plt.savefig(save_name+'_'+coverage_program+'.png', bbox_inches='tight', dpi=dpi)
   return
 
 if running == 'taxon':

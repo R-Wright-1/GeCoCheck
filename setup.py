@@ -4,7 +4,7 @@ from setuptools import setup
 from glob import glob
 
 __license__ = "GPL"
-__version__ = "0.0.4"
+__version__ = "0.0.5"
 __maintainer__ = "Robyn Wright"
 
 long_description = ("Genome coverage checker")

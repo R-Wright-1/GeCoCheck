@@ -64,7 +64,7 @@ if not project_name:
 
 if reads_or_genome_frac == 'reads' and not read_limit:
   print("You have chosen to filter on the number of reads mapped to the reference genome and haven't provided a read limit. This will be taken from what you used for running GeCoCheck.")
-else:
+elif reads_or_genome_frac == 'reads':
   read_limit = int(read_limit)
 if reads_or_genome_frac == 'genome_frac' and not genome_frac_limit:
   sys.exit('You have chosen to filter on the reference genome fraction (%) present so you must give a value for --genome_frac_limit. This can be any number between 0-100')
@@ -193,11 +193,12 @@ else:
           keeping_tax.add(new_id)
     samples_keeping[sample] = keeping_tax
 
-print('Proportion of species-level classifications used for GeCoCheck:')
-print(kreports[kreports['GeCoCheck'] == 'Coverage checked'].drop(['Verified', 'GeCoCheck'], axis=1).sum(axis=0)/kreports.drop(['Verified', 'GeCoCheck'], axis=1).sum(axis=0))
-
-print('Proportion of species-level classifications verified with GeCoCheck:')
-print(kreports[kreports['Verified'] == 'Verified'].drop(['Verified', 'GeCoCheck'], axis=1).sum(axis=0)/kreports.drop(['Verified', 'GeCoCheck'], axis=1).sum(axis=0))
+if samples_grouping == 'overall':
+    print('Proportion of species-level classifications used for GeCoCheck:')
+    print(kreports[kreports['GeCoCheck'] == 'Coverage checked'].drop(['Verified', 'GeCoCheck'], axis=1).sum(axis=0)/kreports.drop(['Verified', 'GeCoCheck'], axis=1).sum(axis=0))
+    
+    print('Proportion of species-level classifications verified with GeCoCheck:')
+    print(kreports[kreports['Verified'] == 'Verified'].drop(['Verified', 'GeCoCheck'], axis=1).sum(axis=0)/kreports.drop(['Verified', 'GeCoCheck'], axis=1).sum(axis=0))
 
 kreports.to_csv(gecocheck_out_dir+project_name+'_combined_kreport_filtering_verified.csv')
 
