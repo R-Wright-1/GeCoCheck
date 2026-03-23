@@ -62,13 +62,27 @@ parser.add_argument('--mapq_threshold', dest='mapq_threshold', default=None, cho
                     help="The threshold to use to determine coverage within the genomes. Note that this is not used if you have set --skip_coverage.")
 parser.add_argument('--identity_threshold', dest='identity_threshold', default=None, choices=range(0,101),
                     help="The threshold to use to determine coverage within the genomes. Note that this is not used if you have set --skip_coverage.")
-
+parser.add_argument('--kaiju_table', dest='kaiju_table', default=None,
+                    help="The file containing the output from kaiju2table. It should be a tab-delimited table containing the columns file, percent, reads, taxon_id and taxon_name.")
+parser.add_argument('--kaiju_outraw_dir', dest='kaiju_outraw_dir', default=None,
+                    help="The directory containing the Kaiju outraw files")
 
 #Read in the command line arguments
 args = parser.parse_args()
-n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, genome_dir, bowtie2_db_dir = int(args.n_proc), args.fastq_dir, args.kraken_kreport_dir, args.kraken_outraw_dir, args.output_dir, args.genome_dir, args.bowtie2_db_dir
+n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, genome_dir, bowtie2_db_dir  = int(args.n_proc), args.fastq_dir, args.kraken_kreport_dir, args.kraken_outraw_dir, args.kaiju_table, args.kaiju_outraw_dir, args.output_dir, args.genome_dir, args.bowtie2_db_dir
 if '.' in output_dir:
   sys.exit("No . can be in the output_dir name. Please use only _ and -")
+if kraken_kreport_dir == None and kaiju_table == None:
+  sys.exit("You must set one of kraken_kreport_dir and kaiju_table.")
+if kraken_kreport_dir != None:
+  run_kraken, run_kaiju = True, False
+else:
+  run_kraken, run_kaiju = False, True
+if run_kaiju and kaiju_outraw_dir == None:
+  sys.exit("You've added a Kaiju table so you need to set the kaiju_outraw_dir.")
+elif run_kraken and kraken_outraw_dir == None:
+  sys.exit("You've given the kraken kreport directory so you need to set the kraken_outraw_dir.")
+  
 if genome_dir == None:
   genome_dir = output_dir+'/genomes/'
 if bowtie2_db_dir == None:
@@ -104,11 +118,11 @@ if coverage_program in ['Minimap2', 'Both']:
   sys.stdout.flush()
 
 o = sys.stdout
-time_string = str(time.ctime(start_time)).replace(':', '-')
-print('Logging all output to '+'Genome Coverage Checker log '+time_string+'.txt\n')
+time_string = str(time.ctime(start_time)).replace(':', '-').replace(' ', '_')
+print('Logging all output to '+'Genome_Coverage_Checker_log '+time_string+'.txt\n')
 print('Check this file at any point to see where Genome Coverage Checker is in the pipeline.\n')
 
-f = open('Genome Coverage Checker log '+time_string+'.txt', 'w')
+f = open('Genome_Coverage_Checker_log_'+time_string+'.txt', 'w')
 sys.stdout = f
 
 #check whether we've already run this and which checkpoint we're at
@@ -126,14 +140,14 @@ if cp != '0':
   if os.path.exists(output_dir+'/pickle_intermediates/args.pickle'):
     with open(output_dir+'/pickle_intermediates/args.pickle', 'rb') as f:
       all_args = pickle.load(f)
-    wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, all_domains, representative_only, skip_coverage, skip_cleanup, duplicate_check, bowtie2_setting, grouped_samples_only, no_grouped_samples, coverage_program = all_args
+    wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, all_domains, representative_only, skip_coverage, skip_cleanup, duplicate_check, bowtie2_setting, grouped_samples_only, no_grouped_samples, coverage_program, run_kaiju, run_kraken = all_args
     
 # 1. Run the initial checks
 if cp == '0':
   sys.stdout.write("Running initial checks\n")
   sys.stdout.flush()
-  wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir = run_initial_checks(wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, genome_dir, bowtie2_db_dir, coverage_program, skip_coverage) #run all of the initial checks to ensure that all of the folders and files exist before starting to try and run anything
-  all_args = [wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, all_domains, representative_only, skip_coverage, skip_cleanup, duplicate_check, bowtie2_setting, grouped_samples_only, no_grouped_samples, coverage_program]
+  wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, run_kaiju, run_kraken = run_initial_checks(wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, genome_dir, bowtie2_db_dir, coverage_program, skip_coverage, run_kaiju, run_kraken) #run all of the initial checks to ensure that all of the folders and files exist before starting to try and run anything
+  all_args = [wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, all_domains, representative_only, skip_coverage, skip_cleanup, duplicate_check, bowtie2_setting, grouped_samples_only, no_grouped_samples, coverage_program, run_kaiju, run_kraken]
   save_pickle(all_args, output_dir+'/pickle_intermediates/args.pickle')
   cp = update_checkpoint(output_dir, "1_initial_checks_run")
   sys.stdout.write("Completed check-point 1 initial checks\n\n")
@@ -145,14 +159,19 @@ else:
 
 # 2. Read in all kreports and combine them to get the genomes that we'll need
 if cp == "1_initial_checks_run":
-  sys.stdout.write("Reading in kreports and combining them\n")
-  sys.stdout.flush()
-  group_samples, taxid, kreports = get_kreports(samples, kraken_kreport_dir, output_dir, md, read_lim, read_mean, project_name, taxid_name)
-  names, objects = ['group_samples', 'taxid', 'kreports'], [group_samples, taxid, kreports]
+  if run_kaiju:
+    sys.stdout.write("Reading in kaiju output and combining samples\n")
+    group_samples, taxid, kreports = get_kaiju(samples, kaiju_table, output_dir, md, read_lim, read_mean, project_name, taxid_name)
+    names, objects = ['group_samples', 'taxid', 'kreports'], [group_samples, taxid, kreports]
+  else:
+    sys.stdout.write("Reading in kreports and combining them\n")
+    sys.stdout.flush()
+    group_samples, taxid, kreports = get_kreports(samples, kraken_kreport_dir, output_dir, md, read_lim, read_mean, project_name, taxid_name)
+    names, objects = ['group_samples', 'taxid', 'kreports'], [group_samples, taxid, kreports]
   for n in range(len(names)):
     save_pickle(objects[n], output_dir+'/pickle_intermediates/'+names[n]+'.pickle')
   cp = update_checkpoint(output_dir, "2_combined_kreports")
-  sys.stdout.write("Completed check-point 2 combined kreports\n\n")
+  sys.stdout.write("Completed check-point 2 combined kreports/got kaiju output\n\n")
   sys.stdout.flush()
 else:
   print("Skipping 2_combined_kreports because check-point wasn't 1_initial_checks_run\n\n")
@@ -194,7 +213,10 @@ else:
 if cp == "3_downloaded_genomes":
   sys.stdout.write("Extracting reads for all taxonomy ID's\n")
   sys.stdout.flush()
-  extract_reads(taxid, output_dir, samples, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, n_proc)
+  if run_kraken:
+    extract_reads(taxid, output_dir, samples, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, n_proc)
+  else:
+    extract_reads_kaiju(taxid, output_dir, samples, fastq_dir, kaiju_outraw_dir, n_proc)
   cp = update_checkpoint(output_dir, "4_extracted_reads")
   sys.stdout.write("Completed check-point 4 extracted all reads\n")
   sys.stdout.write("%s read files exist in the directory\n\n" % (len(os.listdir(output_dir+'/reads_mapped'))))

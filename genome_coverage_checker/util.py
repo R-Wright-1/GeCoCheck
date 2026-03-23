@@ -19,9 +19,13 @@ def update_checkpoint(output_dir, cp):
   return cp
   
 
-def run_initial_checks(wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, genome_dir, bowtie2_db_dir, coverage_program, skip_coverage):
+def run_initial_checks(wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, genome_dir, bowtie2_db_dir, coverage_program, skip_coverage, run_kaiju, run_kraken):
   #check all folders exist
-  for folder in [fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, assembly_folder]:
+  if run_kaiju:
+    all_folders = [fastq_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder]
+  else:
+    all_folders = [fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, assembly_folder]
+  for folder in all_folders:
     if not os.path.exists(folder):
       if folder == output_dir:
         sys.stdout.write(output_dir+" doesn't already exist. Making it now.\n")
@@ -29,8 +33,11 @@ def run_initial_checks(wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_
         os.system('mkdir '+output_dir)
       else:
         sys.exit("This path doesn't exist: "+folder)
-
-  fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, assembly_folder, genome_dir, bowtie2_db_dir = fastq_dir+'/', kraken_kreport_dir+'/', kraken_outraw_dir+'/', output_dir+'/', assembly_folder+'/', genome_dir+'/', bowtie2_db_dir+'/'
+  
+  if run_kaiju:
+    fastq_dir, kaiju_outraw_dir, output_dir, assembly_folder, genome_dir, bowtie2_db_dir = fastq_dir+'/', kaiju_outraw_dir+'/', output_dir+'/', assembly_folder+'/', genome_dir+'/', bowtie2_db_dir+'/'
+  else:
+    fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, assembly_folder, genome_dir, bowtie2_db_dir = fastq_dir+'/', kraken_kreport_dir+'/', kraken_outraw_dir+'/', output_dir+'/', assembly_folder+'/', genome_dir+'/', bowtie2_db_dir+'/'
   
   #directories to make if they don't exist
   all_dirs = [genome_dir, output_dir+'/reads_mapped/', output_dir+'/pickle_intermediates/']
@@ -57,18 +64,26 @@ def run_initial_checks(wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_
   samples = list(md.index.values)
     
   #check all input files exist
-  for sample_name in samples:
-    fq = fastq_dir+sample_name+'.fastq'
-    krep = kraken_kreport_dir+sample_name+'.kreport'
-    krep2 = kraken_kreport_dir+sample_name+'_0.0.kreport'
-    kraw = kraken_outraw_dir+sample_name+'.kraken'
-    for f in [fq, [krep, krep2], kraw]:
-      if isinstance(f, str):
+  if run_kraken:
+    for sample_name in samples:
+      fq = fastq_dir+sample_name+'.fastq'
+      krep = kraken_kreport_dir+sample_name+'.kreport'
+      krep2 = kraken_kreport_dir+sample_name+'_0.0.kreport'
+      kraw = kraken_outraw_dir+sample_name+'.kraken'
+      for f in [fq, [krep, krep2], kraw]:
+        if isinstance(f, str):
+          if not os.path.exists(f):
+            sys.exit("This file doesn't exist: "+f)
+        else:
+          if not os.path.exists(f[0]) and not os.path.exists(f[1]):
+            sys.exit("Neither of these files exists: "+f[0]+", "+f[1])
+  else:
+    for sample_name in samples:
+      fq = fastq_dir+sample_name+'.fastq'
+      kraw = kaiju_outraw_dir+sample_name+'.fastq.out'
+      for f in [fq, kraw]:
         if not os.path.exists(f):
           sys.exit("This file doesn't exist: "+f)
-      else:
-        if not os.path.exists(f[0]) and not os.path.exists(f[1]):
-          sys.exit("Neither of these files exists: "+f[0]+", "+f[1])
   
   #check whether species list exists, if it does, get the taxids
   if species != None:
@@ -83,7 +98,7 @@ def run_initial_checks(wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_
         w = f.write(sp+'\n')
   else:
     taxid_name = {}
-  return wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir
+  return wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, run_kaiju, run_kraken
 
 def get_kreports(samples, kraken_kreport_dir, output_dir, md, read_lim, read_mean, project_name, taxid_name):
   kreports, taxids_kreports = [], {}
@@ -132,19 +147,75 @@ def get_kreports(samples, kraken_kreport_dir, output_dir, md, read_lim, read_mea
     taxid_keeping[tax] = sp_name
   return group_samples, taxid_keeping, kreports
 
+def get_kaiju(samples, kaiju_table, output_dir, md, read_lim, read_mean, project_name, taxid_name):
+  kreports, taxids_kreports = [], {}
+  rename = {}
+  kaiju_out = pd.read_csv(kaiju_table, index_col=0, header=0, sep='\t', low_memory=False)
+  kaiju_out = kaiju_out.dropna(subset=['taxon_id'])
+  kaiju_out['taxon_id'] = kaiju_out['taxon_id'].map(float).map(int).map(str)
+  kaiju_names = list(set(list(kaiju_out.index.values)))
+  for sample_name in samples:
+    for kname in kaiju_names:
+      if sample_name+'.' in kname:
+        rename[kname] = sample_name
+  kaiju_out = kaiju_out.rename(index=rename)
+  for sample_name in samples:
+    this_sample = kaiju_out.loc[sample_name, ['taxon_id', 'reads']]
+    kreports.append(this_sample.rename(columns={'reads':sample_name}).set_index('taxon_id'))
+  
+  kreports = pd.concat(kreports).fillna(value=0)
+  kreports = kreports.groupby(by=kreports.index).sum()
+  
+  taxids, tax_names = list(kaiju_out['taxon_id'].values), list(kaiju_out['taxon_name'].values)
+  for r in range(len(taxids)):
+    taxids_kreports[taxids[r]] = tax_names[r]
+  
+  md_groups = list(set(list(md.iloc[:, 0].values)))
+  group_samples = {project_name:[]}
+  taxid_keeping = {}
+  for tax in taxid_name:
+    if tax in kreports.index.values:
+      taxid_keeping[tax] = taxid_name[tax]
+  for group in md_groups:
+    samples_group = []
+    for r in range(len(md.index.values)):
+      if md.iloc[r, 0] == group:
+        samples_group.append(md.index.values[r])
+        group_samples[project_name].append(md.index.values[r])
+    krep_group = kreports.copy(deep=True).loc[:, samples_group]
+    krep_group = krep_group[krep_group.max(axis=1) >= read_lim]
+    if read_mean != None:
+      krep_group['Mean'] = krep_group.mean(axis=1)
+      krep_group = krep_group[krep_group['Mean'] >= read_mean]
+      krep_group = krep_group.drop('Mean', axis=1)
+    for row in krep_group.index.values:
+      taxid_keeping[str(row)] = taxids_kreports[row]
+    group_samples[group] = samples_group
+  kreports.to_csv(output_dir+project_name+'_combined_kreport.csv')
+  for tax in taxid_keeping:
+    sp_name = taxid_keeping[tax].replace(' ', '_')
+    for s in sp_name:
+      if not s.isalnum():
+        if s in ['.', '_', '-']: continue
+        sp_name = sp_name.replace(s, '-')
+    taxid_keeping[tax] = sp_name
+  return group_samples, taxid_keeping, kreports
+
 def get_assembly_summaries(assembly_folder, all_domains, representative_only):
   if not all_domains: 
     groups = ['bacteria', 'archaea']
     for group in groups:
       if not os.path.exists(assembly_folder+'assembly_summary_'+group+'.txt'):
-        command_download = 'wget -q ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/'+group+'/assembly_summary.txt -O '+assembly_folder+'assembly_summary_'+group+'.txt'
+        #command_download = 'wget -q ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/'+group+'/assembly_summary.txt -O '+assembly_folder+'assembly_summary_'+group+'.txt'
+        command_download = 'curl -s ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/'+group+'/assembly_summary.txt -o '+assembly_folder+'assembly_summary_'+group+'.txt'
         dl = os.system(command_download)
     assemblies_bacteria = pd.read_csv(assembly_folder+'assembly_summary_bacteria.txt', header=1, index_col=0, sep='\t', low_memory=False, on_bad_lines='skip')
     assemblies_archaea = pd.read_csv(assembly_folder+'assembly_summary_archaea.txt', header=1, index_col=0, sep='\t', low_memory=False, on_bad_lines='skip')
     assemblies = pd.concat([assemblies_bacteria, assemblies_archaea])
   else:
     if not os.path.exists(assembly_folder+'assembly_summary_refseq.txt'):
-      command_download = 'wget -q ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt -O '+assembly_folder+'assembly_summary_refseq.txt'
+      #command_download = 'wget -q ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt -O '+assembly_folder+'assembly_summary_refseq.txt'
+      command_download = 'wget -s ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt -o '+assembly_folder+'assembly_summary_refseq.txt'
       dl = os.system(command_download)
     assemblies = pd.read_csv(assembly_folder+'assembly_summary_refseq.txt', header=1, index_col=0, sep='\t', low_memory=False, on_bad_lines='skip')
   assemblies_ref = assemblies[assemblies['refseq_category'] == 'reference genome']
@@ -225,6 +296,25 @@ def extract_reads(taxid, output_dir, samples, fastq_dir, kraken_kreport_dir, kra
           command += '--report '+kraken_kreport_dir+sample+'.kreport --fastq-output'
         else:
           command += '--report '+kraken_kreport_dir+sample+'.kreport --fastq-output'
+        command_list.append(command)
+  write_file(output_dir+'run_extract_reads_commands.txt', command_list)
+  os.system('python '+dirname(abspath(__file__))+'/run_commands_multiprocessing.py --commands '+output_dir+'run_extract_reads_commands.txt --processors '+str(n_proc))
+  return
+
+def extract_reads_kaiju(taxid, output_dir, samples, fastq_dir, kaiju_outraw_dir, n_proc):
+  all_taxid = [tax for tax in taxid]
+  this_taxid, command_list = [], []
+  for l in range(len(taxid)):
+    this_taxid.append(all_taxid[l])
+    if l % 12000 == 0 and l != 0 or l == len(taxid)-1:
+      taxid_list = ' '.join(this_taxid)
+      this_taxid = []
+      for sample in samples:
+        command = 'python '+dirname(abspath(__file__))+'/extract_kraken_reads_modified.py '
+        command += '-k '+kaiju_outraw_dir+'/'+sample+'.fastq.out '
+        command += '-s '+fastq_dir+'/'+sample+'.fastq '
+        command += '-o '+output_dir+'/reads_mapped/'+sample+'.fq '
+        command += '-t '+taxid_list+' '
         command_list.append(command)
   write_file(output_dir+'run_extract_reads_commands.txt', command_list)
   os.system('python '+dirname(abspath(__file__))+'/run_commands_multiprocessing.py --commands '+output_dir+'run_extract_reads_commands.txt --processors '+str(n_proc))
@@ -540,7 +630,6 @@ def collate_output(all_files, taxid, output_dir, kreports, samples, group_sample
   #get kraken counts for each sample or each group of samples
   kraken_counts = {}
   tax_list = [t for t in taxid]
-  print(group_samples, samples)
   if not grouped_samples_only:
     for sample in samples:
       group_samples[sample] = [sample]
