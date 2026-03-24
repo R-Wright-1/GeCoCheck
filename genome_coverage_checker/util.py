@@ -81,9 +81,14 @@ def run_initial_checks(wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_
     for sample_name in samples:
       fq = fastq_dir+sample_name+'.fastq'
       kraw = kaiju_outraw_dir+sample_name+'.fastq.out'
-      for f in [fq, kraw]:
-        if not os.path.exists(f):
-          sys.exit("This file doesn't exist: "+f)
+      kraw2 = kaiju_outraw_dir+sample_name+'.out'
+      for f in [fq, [kraw, kraw2]]:
+        if isinstance(f, str):
+          if not os.path.exists(f):
+            sys.exit("This file doesn't exist: "+f)
+        else:
+          if not os.path.exists(f[0]) and not os.path.exists(f[1]):
+            sys.exit("Neither of these files exists: "+f[0]+", "+f[1])
   
   #check whether species list exists, if it does, get the taxids
   if species != None:
@@ -206,16 +211,16 @@ def get_assembly_summaries(assembly_folder, all_domains, representative_only):
     groups = ['bacteria', 'archaea']
     for group in groups:
       if not os.path.exists(assembly_folder+'assembly_summary_'+group+'.txt'):
-        #command_download = 'wget -q ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/'+group+'/assembly_summary.txt -O '+assembly_folder+'assembly_summary_'+group+'.txt'
-        command_download = 'curl -s ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/'+group+'/assembly_summary.txt -o '+assembly_folder+'assembly_summary_'+group+'.txt'
+        command_download = 'wget -q ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/'+group+'/assembly_summary.txt -O '+assembly_folder+'assembly_summary_'+group+'.txt'
+        #command_download = 'curl -s ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/'+group+'/assembly_summary.txt -o '+assembly_folder+'assembly_summary_'+group+'.txt'
         dl = os.system(command_download)
     assemblies_bacteria = pd.read_csv(assembly_folder+'assembly_summary_bacteria.txt', header=1, index_col=0, sep='\t', low_memory=False, on_bad_lines='skip')
     assemblies_archaea = pd.read_csv(assembly_folder+'assembly_summary_archaea.txt', header=1, index_col=0, sep='\t', low_memory=False, on_bad_lines='skip')
     assemblies = pd.concat([assemblies_bacteria, assemblies_archaea])
   else:
     if not os.path.exists(assembly_folder+'assembly_summary_refseq.txt'):
-      #command_download = 'wget -q ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt -O '+assembly_folder+'assembly_summary_refseq.txt'
-      command_download = 'wget -s ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt -o '+assembly_folder+'assembly_summary_refseq.txt'
+      command_download = 'wget -q ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt -O '+assembly_folder+'assembly_summary_refseq.txt'
+      #command_download = 'curl -s ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt -o '+assembly_folder+'assembly_summary_refseq.txt'
       dl = os.system(command_download)
     assemblies = pd.read_csv(assembly_folder+'assembly_summary_refseq.txt', header=1, index_col=0, sep='\t', low_memory=False, on_bad_lines='skip')
   assemblies_ref = assemblies[assemblies['refseq_category'] == 'reference genome']
@@ -257,13 +262,15 @@ def download_genomes(taxid, assembly_folder, output_dir, all_domains, representa
         unzip_genomes.append('gunzip '+genome_dir+genome_name+'.gz')
         continue
       ftp_path = assemblies.loc[tax, 'ftp_path']
+      if ftp_path[-1] == '/': ftp_path = ftp_path[:-1]
       fname = ftp_path.split('/')[-1]
       ftp_path = ftp_path+'/'+fname+'_genomic.fna.gz'
       download_list.append('wget -q '+ftp_path+' -O '+genome_dir+genome_name+'.gz')
+      #download_list.append('curl -s '+ftp_path+' --output '+genome_dir+genome_name+'.gz')
       unzip_genomes.append('gunzip '+genome_dir+genome_name+'.gz')
   write_file(output_dir+'genome_download_commands.txt', download_list)
   write_file(output_dir+'genome_unzip_commands.txt', unzip_genomes)
-  os.system('python '+dirname(abspath(__file__))+'/run_commands_multiprocessing.py --commands '+output_dir+'genome_download_commands.txt --processors '+str(n_proc))
+  os.system('python '+dirname(abspath(__file__))+'/run_commands_multiprocessing.py --commands '+output_dir+'genome_download_commands.txt --processors 1')#'+str(n_proc))
   os.system('python '+dirname(abspath(__file__))+'/run_commands_multiprocessing.py --commands '+output_dir+'genome_unzip_commands.txt --processors '+str(n_proc))
   got_genomes = {}
   for tax in taxid_list:
@@ -311,16 +318,22 @@ def extract_reads_kaiju(taxid, output_dir, samples, fastq_dir, kaiju_outraw_dir,
       this_taxid = []
       for sample in samples:
         command = 'python '+dirname(abspath(__file__))+'/extract_kraken_reads_modified.py '
-        command += '-k '+kaiju_outraw_dir+'/'+sample+'.fastq.out '
+        if os.path.exists(kaiju_outraw_dir+'/'+sample+'.fastq.out'):
+          command += '-k '+kaiju_outraw_dir+'/'+sample+'.fastq.out '
+        elif os.path.exists(kaiju_outraw_dir+'/'+sample+'.out'):
+          command += '-k '+kaiju_outraw_dir+'/'+sample+'.out '
+        else:
+          sys.stdout.write("Couldn't find a kaiju outraw file for sample: "+sample+". It didn't have .fastq.out or .out as the suffix.")
+          continue
         command += '-s '+fastq_dir+'/'+sample+'.fastq '
         command += '-o '+output_dir+'/reads_mapped/'+sample+'.fq '
         command += '-t '+taxid_list+' '
-        command_list.append(command)
+        command_list.append(command+'--kaiju')
   write_file(output_dir+'run_extract_reads_commands.txt', command_list)
   os.system('python '+dirname(abspath(__file__))+'/run_commands_multiprocessing.py --commands '+output_dir+'run_extract_reads_commands.txt --processors '+str(n_proc))
   return
 
-def combine_convert_files(taxid, output_dir, samples, group_samples, n_proc, skip_duplicate_check=False, grouped_samples_only=False):
+def combine_convert_files(taxid, output_dir, samples, group_samples, n_proc, duplicate_check=True, grouped_samples_only=False):
   combine_commands = []
   all_fastq = []
   groups_only = []
@@ -382,7 +395,7 @@ def combine_convert_files_paf(taxid, output_dir, samples, group_samples, n_proc,
   write_file(output_dir+'run_combine_files_commands.txt', combine_commands)
   os.system('python '+dirname(abspath(__file__))+'/run_commands_multiprocessing.py --commands '+output_dir+'run_combine_files_commands.txt --processors '+str(n_proc))
 
-  if not skip_duplicate_check:
+  if duplicate_check:
     #remove duplicate reads next
     remove_duplicates_files = [output_dir+'reads_mapped/'+f for f in os.listdir(output_dir+'reads_mapped/') if '.fq' in f]
     write_file(output_dir+'run_remove_duplicate_reads.txt', remove_duplicates_files)
@@ -696,7 +709,7 @@ def collate_output(all_files, taxid, output_dir, kreports, samples, group_sample
   out_df.to_csv(output_dir+'coverage_checker_output.tsv', sep='\t', index=False)
   return
 
-def collate_output_paf(all_files, taxid, output_dir, kreports, samples, group_samples, skip_coverage, coverage_program, genome_dir, grouped_samples_only=False, no_grouped_samples=False):
+def collate_output_paf(all_files, taxid, output_dir, kreports, samples, group_samples, skip_coverage, coverage_program, genome_dir, run_kaiju, grouped_samples_only=False, no_grouped_samples=False):
   all_files = [f.split('/')[-1] for f in all_files]
   #get coverage outputs
   bowtie2_out, minimap2_out = {}, {}
@@ -758,7 +771,10 @@ def collate_output_paf(all_files, taxid, output_dir, kreports, samples, group_sa
       group_samples[sample] = [sample]
   for group in group_samples:
     for tax in tax_list:
-      krak_red = kreports.loc[int(tax), group_samples[group]].values
+      try:
+        krak_red = kreports.loc[int(tax), group_samples[group]].values
+      except:
+        krak_red = kreports.loc[tax, group_samples[group]].values
       kraken_counts[group+'_'+tax] = sum(krak_red)
       
   #get reference genome lengths
@@ -770,13 +786,18 @@ def collate_output_paf(all_files, taxid, output_dir, kreports, samples, group_sa
     genome_lengths[tid] = all_info['full_length']
 
   #now compile all together
-  first_row = ['Sample', 'taxid', 'Species name', 'Reference genome length (bp)', 'Kraken reads assigned']
+  if run_kaiju:
+    first_row = ['Sample', 'taxid', 'Species name', 'Reference genome length (bp)', 'Kaiju reads assigned']
+    name_str = 'kaiju'
+  else:
+    first_row = ['Sample', 'taxid', 'Species name', 'Reference genome length (bp)', 'Kraken reads assigned']
+    name_str = 'kraken'
   if coverage_program in ['Minimap2', 'Both']:
     first_row.append('Minimap2 reads mapped')
-    first_row.append('Proportion kraken reads mapped with Minimap2')
+    first_row.append('Proportion '+name_str+' reads mapped with Minimap2')
   if coverage_program in ['Bowtie2', 'Both']:
     first_row.append('Bowtie2 reads mapped')
-    first_row.append('Proportion kraken reads mapped with Bowtie2')
+    first_row.append('Proportion '+name_str+' reads mapped with Bowtie2')
   if not skip_coverage:
     if coverage_program in ['Both', 'Minimap2']:
       first_row.append('Minimap2 mean identity of mapped reads (%)')

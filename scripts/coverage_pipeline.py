@@ -119,7 +119,7 @@ if coverage_program in ['Minimap2', 'Both']:
 
 o = sys.stdout
 time_string = str(time.ctime(start_time)).replace(':', '-').replace(' ', '_')
-print('Logging all output to '+'Genome_Coverage_Checker_log '+time_string+'.txt\n')
+print('Logging all output to '+'Genome_Coverage_Checker_log_'+time_string+'.txt\n')
 print('Check this file at any point to see where Genome Coverage Checker is in the pipeline.\n')
 
 f = open('Genome_Coverage_Checker_log_'+time_string+'.txt', 'w')
@@ -298,7 +298,7 @@ else:
 if cp == "8_got_coverage":
   sys.stdout.write("Collating all output\n")
   sys.stdout.flush()
-  collate_output_paf(all_files, taxid, output_dir, kreports, samples, group_samples, skip_coverage, coverage_program, genome_dir, grouped_samples_only, no_grouped_samples)
+  collate_output_paf(all_files, taxid, output_dir, kreports, samples, group_samples, skip_coverage, coverage_program, genome_dir, run_kaiju, grouped_samples_only, no_grouped_samples)
   cp = update_checkpoint(output_dir, "9_collate_output")
   sys.stdout.write("Completed check-point 9 collating output\n\n")
   sys.stdout.flush()
@@ -329,4 +329,4 @@ sys.stdout.flush()
 f.close()
 sys.stdout = o
 
-print('See '+'Genome Coverage Checker log '+time_string+'.txt for a complete log of the Genome Coverage Checker run!\n')
+print('See '+'Genome_Coverage_Checker_log_'+time_string+'.txt for a complete log of the Genome Coverage Checker run!\n')

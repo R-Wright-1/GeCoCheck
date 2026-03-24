@@ -81,15 +81,18 @@ class Tree(object):
 #returns: 
 #   - taxonomy ID
 #   - read ID
-def process_kraken_output(kraken_line):
+def process_kraken_output(kraken_line, kaiju=False):
     l_vals = kraken_line.split('\t')
-    if len(l_vals) < 5:
-        return [-1, '']
-    if "taxid" in l_vals[2]:
-        temp = l_vals[2].split("taxid ")[-1]
-        tax_id = temp[:-1]
+    if kaiju:
+        tax_id = int(l_vals[2].replace('\n', ''))
     else:
-        tax_id = l_vals[2]
+        if len(l_vals) < 5:
+            return [-1, '']
+        if "taxid" in l_vals[2]:
+            temp = l_vals[2].split("taxid ")[-1]
+            tax_id = temp[:-1]
+        else:
+            tax_id = l_vals[2]
 
     read_id = l_vals[1]
     if (tax_id == 'A'):
@@ -175,10 +178,17 @@ def main():
     parser.add_argument('--verbose', dest='verbose', required=False,
         action='store_true',default=False,
         help='Whether to print the output to the terminal or not')
+    parser.add_argument('--kaiju', dest='kaiju', required=False,
+        action='store_true',default=False,
+        help='Whether this is a kaiju output being processes')
     parser.set_defaults(append=False)
 
     args=parser.parse_args()
     verbose = args.verbose
+    if not args.kaiju:
+      kaiju = False
+    else:
+      kaiju = True
 
     #Start Program
     time = strftime("%m-%d-%Y %H:%M:%S", gmtime())
@@ -295,7 +305,10 @@ def main():
         readid_by_taxid[tid] = []
         taxid_reads[tid] = []
     except:
-      nothing = True
+      readid_by_taxid, taxid_reads, taxid_by_readid = {}, {}, {}
+      for tid in save_taxids:
+        readid_by_taxid[tid] = []
+        taxid_reads[tid] = []
     for line in k_file:
         count_kraken += 1
         if verbose:
@@ -303,7 +316,7 @@ def main():
               sys.stdout.write('\r\t%0.2f million reads processed' % float(count_kraken/1000000.))
               sys.stdout.flush()
         #Parse line for results
-        [tax_id, read_id] = process_kraken_output(line)
+        [tax_id, read_id] = process_kraken_output(line, kaiju)
         if tax_id == -1:
             continue
         #Skip if reads are human/artificial/synthetic
@@ -311,6 +324,11 @@ def main():
             save_taxids[tax_id] += 1
             save_readids2[read_id] = 0
             save_readids[read_id] = 0
+            if kaiju:
+              save_readids2[read_id+'/1'] = 0
+              save_readids[read_id+'/1'] = 0
+              save_readids2[read_id+'/2'] = 0
+              save_readids[read_id+'/2'] = 0
             try:
               if tax_id in save_children:
                 readid_by_taxid[tax_id].append(read_id)
