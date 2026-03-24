@@ -211,16 +211,16 @@ def get_assembly_summaries(assembly_folder, all_domains, representative_only):
     groups = ['bacteria', 'archaea']
     for group in groups:
       if not os.path.exists(assembly_folder+'assembly_summary_'+group+'.txt'):
-        command_download = 'wget -q ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/'+group+'/assembly_summary.txt -O '+assembly_folder+'assembly_summary_'+group+'.txt'
-        #command_download = 'curl -s ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/'+group+'/assembly_summary.txt -o '+assembly_folder+'assembly_summary_'+group+'.txt'
+        command_download = 'wget -q https://ftp.ncbi.nlm.nih.gov/genomes/refseq/'+group+'/assembly_summary.txt -O '+assembly_folder+'assembly_summary_'+group+'.txt'
+        #command_download = 'curl -s https://ftp.ncbi.nlm.nih.gov/genomes/refseq/'+group+'/assembly_summary.txt -o '+assembly_folder+'assembly_summary_'+group+'.txt'
         dl = os.system(command_download)
     assemblies_bacteria = pd.read_csv(assembly_folder+'assembly_summary_bacteria.txt', header=1, index_col=0, sep='\t', low_memory=False, on_bad_lines='skip')
     assemblies_archaea = pd.read_csv(assembly_folder+'assembly_summary_archaea.txt', header=1, index_col=0, sep='\t', low_memory=False, on_bad_lines='skip')
     assemblies = pd.concat([assemblies_bacteria, assemblies_archaea])
   else:
     if not os.path.exists(assembly_folder+'assembly_summary_refseq.txt'):
-      command_download = 'wget -q ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt -O '+assembly_folder+'assembly_summary_refseq.txt'
-      #command_download = 'curl -s ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt -o '+assembly_folder+'assembly_summary_refseq.txt'
+      command_download = 'wget -q https://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt -O '+assembly_folder+'assembly_summary_refseq.txt'
+      #command_download = 'curl -s https://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt -o '+assembly_folder+'assembly_summary_refseq.txt'
       dl = os.system(command_download)
     assemblies = pd.read_csv(assembly_folder+'assembly_summary_refseq.txt', header=1, index_col=0, sep='\t', low_memory=False, on_bad_lines='skip')
   assemblies_ref = assemblies[assemblies['refseq_category'] == 'reference genome']
@@ -261,7 +261,7 @@ def download_genomes(taxid, assembly_folder, output_dir, all_domains, representa
       if os.path.exists(genome_dir+genome_name+'.gz'):
         unzip_genomes.append('gunzip '+genome_dir+genome_name+'.gz')
         continue
-      ftp_path = assemblies.loc[tax, 'ftp_path']
+      ftp_path = assemblies.loc[tax, 'ftp_path'].replace('ftp:/', 'https:/')
       if ftp_path[-1] == '/': ftp_path = ftp_path[:-1]
       fname = ftp_path.split('/')[-1]
       ftp_path = ftp_path+'/'+fname+'_genomic.fna.gz'
@@ -270,7 +270,7 @@ def download_genomes(taxid, assembly_folder, output_dir, all_domains, representa
       unzip_genomes.append('gunzip '+genome_dir+genome_name+'.gz')
   write_file(output_dir+'genome_download_commands.txt', download_list)
   write_file(output_dir+'genome_unzip_commands.txt', unzip_genomes)
-  os.system('python '+dirname(abspath(__file__))+'/run_commands_multiprocessing.py --commands '+output_dir+'genome_download_commands.txt --processors 1')#'+str(n_proc))
+  os.system('python '+dirname(abspath(__file__))+'/run_commands_multiprocessing.py --commands '+output_dir+'genome_download_commands.txt --processors '+str(n_proc))
   os.system('python '+dirname(abspath(__file__))+'/run_commands_multiprocessing.py --commands '+output_dir+'genome_unzip_commands.txt --processors '+str(n_proc))
   got_genomes = {}
   for tax in taxid_list:
@@ -328,7 +328,7 @@ def extract_reads_kaiju(taxid, output_dir, samples, fastq_dir, kaiju_outraw_dir,
         command += '-s '+fastq_dir+'/'+sample+'.fastq '
         command += '-o '+output_dir+'/reads_mapped/'+sample+'.fq '
         command += '-t '+taxid_list+' '
-        command_list.append(command+'--kaiju')
+        command_list.append(command+'--kaiju --fastq-output')
   write_file(output_dir+'run_extract_reads_commands.txt', command_list)
   os.system('python '+dirname(abspath(__file__))+'/run_commands_multiprocessing.py --commands '+output_dir+'run_extract_reads_commands.txt --processors '+str(n_proc))
   return
@@ -810,6 +810,8 @@ def collate_output_paf(all_files, taxid, output_dir, kreports, samples, group_sa
   all_out = []
   for group in group_samples:
     for tax in taxid:
+      if run_kaiju:
+        kraken_counts[group+'_'+tax] = kraken_counts[group+'_'+tax]*2
       this_sample = [group, tax, taxid[tax], genome_lengths[tax], kraken_counts[group+'_'+tax]]
       if kraken_counts[group+'_'+tax] == 0:
         continue

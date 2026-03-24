@@ -338,7 +338,9 @@ def main():
                 readid_by_taxid[parent_taxid].append(read_id)
                 taxid_by_readid[read_id] = parent_taxid
             except:
-              nothing = True
+              taxid_by_readid[read_id] = tax_id
+              taxid_by_readid[read_id+'/1'] = tax_id
+              taxid_by_readid[read_id+'/2'] = tax_id
         elif (tax_id not in exclude_taxids) and args.exclude:
             if tax_id not in save_taxids:
                 save_taxids[tax_id] = 1
@@ -419,10 +421,11 @@ def main():
             if verbose:
               sys.stdout.write('\r\t%i read IDs found (%0.2f mill reads processed)' % (count_output, float(count_seqs/1000000.)))
               sys.stdout.flush()
-            try:
-              taxid_reads[taxid_by_readid[test_id]].append(record)
-            except:
-              nothing = True
+            taxid_reads[taxid_by_readid[test_id]].append(record)
+            # try:
+            #   taxid_reads[taxid_by_readid[test_id]].append(record)
+            # except:
+            #   nothing = True
             #Save to file
             if args.fastq_out:
                 SeqIO.write(record, o_file, "fastq")

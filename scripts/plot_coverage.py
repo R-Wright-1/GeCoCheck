@@ -19,8 +19,10 @@ parser.add_argument('--top_taxa', dest='top_taxa', default=30,
                     help="How many taxa to plot (only used for sample oriented format)")
 parser.add_argument('--coverage_program', dest='coverage_program', default='Bowtie2', choices=['Minimap2', 'Bowtie2', 'Both'],
                     help="Which of the programs to use for plotting coverage across the genome. Default is Bowtie2.")
-parser.add_argument('--sort_by', dest='sort_by', default='kraken', choices=['genome_fraction', 'kraken', 'minimap2', 'bowtie2'],
+parser.add_argument('--sort_by', dest='sort_by', default='kraken', choices=['genome_fraction', 'kraken', 'kaiju', 'minimap2', 'bowtie2'],
                     help="How to determine which are the top taxa. Note that if you choose minimap2/bowtie2 and ran coverage checker without a read limit then this may not be very helpful.")
+parser.add_argument('--kaiju', dest='kaiju', default=False, action='store_true',
+                    help="Add this if you are using kaiju and not kraken output")
 parser.add_argument('--project_folder', dest='project_folder', default=None,
                     help="The folder containing the coverage checker output. It is expected that this contains coverage_checker_output.tsv and the coverage folder at a minimum.")
 parser.add_argument('--dpi', dest='dpi', default=300,
@@ -31,8 +33,16 @@ parser.add_argument('--samples', dest='samples', default=None,
                     help="Which sample(s) to plot. This can be a single sample name or a list separated by commas (e.g. Sample1,Sample2,Sample3)")
 
 args = parser.parse_args()
-running, taxid, top_taxa, sort_by, project_folder, dpi, granularity, samples, coverage_program = args.running, args.taxid, args.top_taxa, args.sort_by, args.project_folder, args.dpi, args.granularity, args.samples, args.coverage_program
+running, taxid, top_taxa, sort_by, project_folder, dpi, granularity, samples, coverage_program, kaiju = args.running, args.taxid, args.top_taxa, args.sort_by, args.project_folder, args.dpi, args.granularity, args.samples, args.coverage_program, args.kaiju
 project_folder = project_folder+'/'
+
+if args.kaiju:
+  classifier_lower, classifier_upper = 'kaiju', 'Kaiju'
+else:
+  classifier_lower, classifier_upper = 'kraken', 'Kraken'
+
+if sort_by == 'kraken' and kaiju:
+  sort_by = 'kaiju'
 
 if not os.path.exists(project_folder+'figures/'):
   os.system('mkdir '+project_folder+'figures')
@@ -148,15 +158,15 @@ def single_taxon_across_samples(taxid, save_name, project_folder, coverage_progr
   cc_out = cc_out.loc[int(taxid), :]
   species_name = cc_out['Species name'].values[0].replace('_', ' ')
   if coverage_program == 'Both':
-    cc_out = cc_out.loc[:, ['Sample', 'Reference genome length (bp)', 'Kraken reads assigned', 'Minimap2 reads mapped', 'Minimap2 genome fraction (%)', 'Proportion kraken reads mapped with Minimap2', 'Bowtie2 reads mapped', 'Bowtie2 genome fraction (%)', 'Proportion kraken reads mapped with Bowtie2']].set_index('Sample')
-    cc_out['Proportion kraken reads mapped with Minimap2'] = cc_out['Proportion kraken reads mapped with Minimap2']*100
-    cc_out['Proportion kraken reads mapped with Bowtie2'] = cc_out['Proportion kraken reads mapped with Bowtie2']*100
+    cc_out = cc_out.loc[:, ['Sample', 'Reference genome length (bp)', classifier_upper+' reads assigned', 'Minimap2 reads mapped', 'Minimap2 genome fraction (%)', 'Proportion '+classifier_lower+' reads mapped with Minimap2', 'Bowtie2 reads mapped', 'Bowtie2 genome fraction (%)', 'Proportion '+classifier_lower+' reads mapped with Bowtie2']].set_index('Sample')
+    cc_out['Proportion '+classifier_lower+' reads mapped with Minimap2'] = cc_out['Proportion '+classifier_lower+' reads mapped with Minimap2']*100
+    cc_out['Proportion '+classifier_lower+' reads mapped with Bowtie2'] = cc_out['Proportion '+classifier_lower+' reads mapped with Bowtie2']*100
   elif coverage_program == 'Minimap2':
-    cc_out = cc_out.loc[:, ['Sample', 'Reference genome length (bp)', 'Kraken reads assigned', 'Minimap2 reads mapped', 'Minimap2 genome fraction (%)', 'Proportion kraken reads mapped with Minimap2']].set_index('Sample')
-    cc_out['Proportion kraken reads mapped with Minimap2'] = cc_out['Proportion kraken reads mapped with Minimap2']*100
+    cc_out = cc_out.loc[:, ['Sample', 'Reference genome length (bp)', classifier_upper+' reads assigned', 'Minimap2 reads mapped', 'Minimap2 genome fraction (%)', 'Proportion '+classifier_lower+' reads mapped with Minimap2']].set_index('Sample')
+    cc_out['Proportion '+classifier_lower+' reads mapped with Minimap2'] = cc_out['Proportion '+classifier_lower+' reads mapped with Minimap2']*100
   elif coverage_program == 'Bowtie2':
-    cc_out = cc_out.loc[:, ['Sample', 'Reference genome length (bp)', 'Kraken reads assigned', 'Bowtie2 reads mapped', 'Bowtie2 genome fraction (%)', 'Proportion kraken reads mapped with Bowtie2']].set_index('Sample')
-    cc_out['Proportion kraken reads mapped with Bowtie2'] = cc_out['Proportion kraken reads mapped with Bowtie2']*100
+    cc_out = cc_out.loc[:, ['Sample', 'Reference genome length (bp)', classifier_upper+' reads assigned', 'Bowtie2 reads mapped', 'Bowtie2 genome fraction (%)', 'Proportion '+classifier_lower+' reads mapped with Bowtie2']].set_index('Sample')
+    cc_out['Proportion '+classifier_lower+' reads mapped with Bowtie2'] = cc_out['Proportion '+classifier_lower+' reads mapped with Bowtie2']*100
   
   #get plotting order
   if samples == 'All':
@@ -174,8 +184,8 @@ def single_taxon_across_samples(taxid, save_name, project_folder, coverage_progr
     programs = ['Minimap2', 'Bowtie2']
   fig.suptitle(taxid+': $'+species_name.replace(' ', '$ $')+'$\n\n', fontweight='bold', fontsize=26, ha='right')
   for program in programs:
-    colormaps, colnames = ['RdPu', 'GnBu', 'BuPu'], ['Kraken reads assigned', program+' genome fraction (%)', 'Proportion kraken reads mapped with '+program]
-    plot_names = ['Kraken reads\nassigned', program+' genome\nfraction(%)', 'Kraken reads\nmapped by\n'+program+' (%)']
+    colormaps, colnames = ['RdPu', 'GnBu', 'BuPu'], [classifier_upper+' reads assigned', program+' genome fraction (%)', 'Proportion '+classifier_lower+' reads mapped with '+program]
+    plot_names = [classifier_upper+' reads\nassigned', program+' genome\nfraction(%)', classifier_upper+' reads\nmapped by\n'+program+' (%)']
     mapping, mins, maxs = [], [], []
     for c in range(len(colormaps)):
       if colnames[c] not in cc_out.columns: continue
@@ -282,23 +292,23 @@ def multiple_taxa_in_one_sample(save_name, project_folder, taxid, sample, top_ta
     cc_out = cc_out.loc[[int(t) for t in taxid], :]
   else:
     if sort_by == 'genome_fraction': cc_out = cc_out.sort_values(by=['Minimap2 genome fraction (%)'], ascending=False)
-    elif sort_by == 'kraken': cc_out = cc_out.sort_values(by=['Kraken reads assigned'], ascending=False)
+    elif sort_by in ['kraken', 'kaiju']: cc_out = cc_out.sort_values(by=[classifier_upper+' reads assigned'], ascending=False)
     elif sort_by in ['minimap2', 'bowtie2']:
-      cc_out = cc_out.sort_values(by=['Kraken reads assigned'], ascending=False)
-      if sort_by == 'minimap2': cc_out = cc_out.sort_values(by=['Proportion kraken reads mapped with Minimap2'], ascending=False)
-      elif sort_by == 'bowtie2': cc_out = cc_out.sort_values(by=['Proportion kraken reads mapped with Bowtie2'], ascending=False)
+      cc_out = cc_out.sort_values(by=[classifier_upper+' reads assigned'], ascending=False)
+      if sort_by == 'minimap2': cc_out = cc_out.sort_values(by=['Proportion '+classifier_lower+' reads mapped with Minimap2'], ascending=False)
+      elif sort_by == 'bowtie2': cc_out = cc_out.sort_values(by=['Proportion '+classifier_lower+' reads mapped with Bowtie2'], ascending=False)
     save_name += '_'+sort_by+'_top'+str(top_taxa)
     cc_out = cc_out.head(top_taxa)
   if coverage_program == 'Both':
-    cc_out = cc_out.loc[:, ['Species name', 'Reference genome length (bp)', 'Kraken reads assigned', 'Minimap2 reads mapped', 'Minimap2 genome fraction (%)', 'Proportion kraken reads mapped with Minimap2', 'Bowtie2 reads mapped', 'Bowtie2 genome fraction (%)', 'Proportion kraken reads mapped with Bowtie2']]
-    cc_out['Proportion kraken reads mapped with Minimap2'] = cc_out['Proportion kraken reads mapped with Minimap2']*100
-    cc_out['Proportion kraken reads mapped with Bowtie2'] = cc_out['Proportion kraken reads mapped with Bowtie2']*100
+    cc_out = cc_out.loc[:, ['Species name', 'Reference genome length (bp)', classifier_upper+' reads assigned', 'Minimap2 reads mapped', 'Minimap2 genome fraction (%)', 'Proportion '+classifier_lower+' reads mapped with Minimap2', 'Bowtie2 reads mapped', 'Bowtie2 genome fraction (%)', 'Proportion '+classifier_lower+' reads mapped with Bowtie2']]
+    cc_out['Proportion '+classifier_lower+' reads mapped with Minimap2'] = cc_out['Proportion '+classifier_lower+' reads mapped with Minimap2']*100
+    cc_out['Proportion '+classifier_lower+' reads mapped with Bowtie2'] = cc_out['Proportion '+classifier_lower+' reads mapped with Bowtie2']*100
   elif coverage_program == 'Minimap2':
-    cc_out = cc_out.loc[:, ['Species name', 'Reference genome length (bp)', 'Kraken reads assigned', 'Minimap2 reads mapped', 'Minimap2 genome fraction (%)', 'Proportion kraken reads mapped with Minimap2']]
-    cc_out['Proportion kraken reads mapped with Minimap2'] = cc_out['Proportion kraken reads mapped with Minimap2']*100
+    cc_out = cc_out.loc[:, ['Species name', 'Reference genome length (bp)', classifier_upper+' reads assigned', 'Minimap2 reads mapped', 'Minimap2 genome fraction (%)', 'Proportion '+classifier_lower+' reads mapped with Minimap2']]
+    cc_out['Proportion '+classifier_lower+' reads mapped with Minimap2'] = cc_out['Proportion '+classifier_lower+' reads mapped with Minimap2']*100
   elif coverage_program == 'Bowtie2':
-    cc_out = cc_out.loc[:, ['Species name', 'Reference genome length (bp)', 'Kraken reads assigned', 'Bowtie2 reads mapped', 'Bowtie2 genome fraction (%)', 'Proportion kraken reads mapped with Bowtie2']]
-    cc_out['Proportion kraken reads mapped with Bowtie2'] = cc_out['Proportion kraken reads mapped with Bowtie2']*100
+    cc_out = cc_out.loc[:, ['Species name', 'Reference genome length (bp)', classifier_upper+' reads assigned', 'Bowtie2 reads mapped', 'Bowtie2 genome fraction (%)', 'Proportion '+classifier_lower+' reads mapped with Bowtie2']]
+    cc_out['Proportion '+classifier_lower+' reads mapped with Bowtie2'] = cc_out['Proportion '+classifier_lower+' reads mapped with Bowtie2']*100
   
   plot_order = list(cc_out.index.values)
   l = len(plot_order)
@@ -311,8 +321,8 @@ def multiple_taxa_in_one_sample(save_name, project_folder, taxid, sample, top_ta
     programs = ['Minimap2', 'Bowtie2']
   fig.suptitle(sample, fontweight='bold', fontsize=26, ha='right')
   for program in programs:
-    colormaps, colnames = ['RdPu', 'GnBu', 'BuPu'], ['Kraken reads assigned', program+' genome fraction (%)', 'Proportion kraken reads mapped with '+program]
-    plot_names = ['Kraken reads\nassigned', program+' genome\nfraction(%)', 'Kraken reads\nmapped by\n'+program+' (%)']
+    colormaps, colnames = ['RdPu', 'GnBu', 'BuPu'], [classifier_upper+' reads assigned', program+' genome fraction (%)', 'Proportion '+classifier_lower+' reads mapped with '+program]
+    plot_names = [classifier_upper+' reads\nassigned', program+' genome\nfraction(%)', classifier_upper+' reads\nmapped by\n'+program+' (%)']
     mapping, mins, maxs = [], [], []
     for c in range(len(colormaps)):
       if colnames[c] not in cc_out.columns: continue
