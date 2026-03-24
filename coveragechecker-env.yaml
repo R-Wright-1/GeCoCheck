@@ -1,4 +1,4 @@
-name: coverage_checker
+name: GeCoCheck-v0.0.5
 
 channels:
 - conda-forge
