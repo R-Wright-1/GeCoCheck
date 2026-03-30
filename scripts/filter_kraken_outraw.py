@@ -100,7 +100,7 @@ for r in range(len(metadata.index.values)):
 with open(gecocheck_out_dir+'/pickle_intermediates/args.pickle', 'rb') as f:
   cov_args = pickle.load(f)
 
-read_lim, read_mean = cov_args[7], cov_args[8]
+read_lim, read_mean = cov_args[9], cov_args[10]
 
 if not read_limit:
   read_limit = read_lim
