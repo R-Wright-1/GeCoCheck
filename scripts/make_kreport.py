@@ -138,10 +138,15 @@ def main():
     sys.stdout.flush()
     #STEP 3/4: FOR EVERY TAXID PARSED, ADD UP TOTAL READS
     sys.stdout.write(">> STEP 3/4: Creating final tree...\n")
-    new_taxid2counts = {}
+    new_taxid2counts, new_taxid2allcounts = {}, {}
     for tid in taxid2counts:
-        new_taxid2counts[tid.split('taxid ')[1].replace(')', '')] = taxid2counts[tid]
+        if 'taxid ' in tid: new_taxid2counts[tid.split('taxid ')[1].replace(')', '')] = taxid2counts[tid]
+        else: new_taxid2counts[tid] = taxid2counts[tid]
+    for tid in taxid2allcounts:
+        if 'taxid ' in tid: new_taxid2allcounts[tid.split('taxid ')[1].replace(')', '')] = taxid2allcounts[tid]
+        else: new_taxid2allcounts[tid] = taxid2allcounts[tid]
     taxid2counts = new_taxid2counts
+    taxid2allcounts = new_taxid2allcounts
     for curr_tid in taxid2counts:
         #Skip unclassified
         if curr_tid == '0':
