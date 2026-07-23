@@ -517,6 +517,7 @@ def make_bowtie2_databases(taxid, output_dir, n_proc, bowtie2_db_dir, genome_dir
 def run_bowtie2(all_files, taxid, output_dir, n_proc, bowtie2_setting, bowtie2_db_dir):
   bowtie2_commands, view_commands, fasta_commands = [], [], []
   out_names = []
+  print('Length files: ', len(all_files))
   for file in all_files:
     tid = file.split('_')[-1]
     bowtie2_file = bowtie2_db_dir+tid+'_'+taxid[tid]

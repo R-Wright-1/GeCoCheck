@@ -462,11 +462,12 @@ def main():
     try:
       if '_R1' in args.output_file:
         out1, out2 = args.output_file.split('_R1')
+        for taxid in taxid_reads_o1:
+          SeqIO.write(taxid_reads_o1[taxid], out1+'_'+str(taxid)+'_R1'+out2, "fastq")
       else:
         out1, out2 = args.output_file.split('.')
-        out1 += '.'
-      for taxid in taxid_reads_o1:
-        SeqIO.write(taxid_reads_o1[taxid], out1+'_'+str(taxid)+'_R1'+out2, "fastq")
+        for taxid in taxid_reads_o1:
+          SeqIO.write(taxid_reads_o1[taxid], out1+'_'+str(taxid)+'.'+out2, "fastq")
     except:
       nothing = True
     #Close files
