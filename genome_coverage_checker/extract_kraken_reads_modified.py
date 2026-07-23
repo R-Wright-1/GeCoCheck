@@ -2,10 +2,10 @@
 ######################################################################
 #extract_kraken_reads.py takes in a kraken-style output and kraken report
 #and a taxonomy level to extract reads matching that level
-#Copyright (C) 2019 Jennifer Lu, jlu26@jhmi.edu
+#Copyright (C) 2019-2023 Jennifer Lu, jennifer.lu717@gmail.com
 #
 #This file is part of KrakenTools
-#KrakenTools is free software; oyu can redistribute it and/or modify
+#KrakenTools is free software; you can redistribute it and/or modify
 #it under the terms of the GNU General Public License as published by
 #the Free Software Foundation; either version 3 of the license, or
 #(at your option) any later version.
@@ -85,6 +85,11 @@ def process_kraken_output(kraken_line, kaiju=False):
     l_vals = kraken_line.split('\t')
     if kaiju:
         tax_id = int(l_vals[2].replace('\n', ''))
+    if len(l_vals) < 5:
+        return [-1, '']
+    if "taxid" in l_vals[2]:
+        temp = l_vals[2].split("taxid ")[-1]
+        tax_id = temp[:-1]
     else:
         if len(l_vals) < 5:
             return [-1, '']
@@ -93,6 +98,7 @@ def process_kraken_output(kraken_line, kaiju=False):
             tax_id = temp[:-1]
         else:
             tax_id = l_vals[2]
+        tax_id = l_vals[2]
 
     read_id = l_vals[1]
     if (tax_id == 'A'):
@@ -117,13 +123,26 @@ def process_kraken_output(kraken_line, kaiju=False):
 #   - level_type (type of taxonomy level - U, R, D, P, C, O, F, G, S, etc) 
 def process_kraken_report(report_line):
     l_vals = report_line.strip().split('\t')
+    if len(l_vals) < 5:
+        return []
     try:
         int(l_vals[1])
     except ValueError:
         return []
     #Extract relevant information
-    level_type = l_vals[3]
-    taxid = int(l_vals[4])
+    try:
+        taxid = int(l_vals[-3]) 
+        level_type = l_vals[-2]
+        map_kuniq = {'species':'S', 'genus':'G','family':'F',
+            'order':'O','class':'C','phylum':'P','superkingdom':'D',
+            'kingdom':'K'}
+        if level_type not in map_kuniq:
+            level_type = '-'
+        else:
+            level_type = map_kuniq[level_type]
+    except ValueError:
+        taxid = int(l_vals[-2])
+        level_type = l_vals[-3]
     #Get spaces to determine level num
     spaces = 0
     for char in l_vals[-1]:
@@ -133,7 +152,7 @@ def process_kraken_report(report_line):
             break
     level_num = int(spaces/2)
     return[taxid, level_num, level_type]
-#################################################################################
+################################################################################
 #Main method 
 def main():
     #Parse arguments
@@ -151,6 +170,12 @@ def main():
         help='Output FASTA/Q file containing the reads and sample IDs')
     parser.add_argument('-o2',"--output2", dest='output_file2', required=False, default='',
         help='Output FASTA/Q file containig the second pair of reads [required for paired input]') 
+    parser.add_argument('--verbose', dest='verbose', required=False,
+        action='store_true',default=False,
+        help='Whether to print the output to the terminal or not')
+    parser.add_argument('--kaiju', dest='kaiju', required=False,
+        action='store_true',default=False,
+        help='Whether this is a kaiju output being processes')
     parser.add_argument('--append', dest='append', action='store_true',
         help='Append the sequences to the end of the output FASTA file specified.')
     parser.add_argument('--noappend', dest='append', action='store_false',
@@ -175,12 +200,6 @@ def main():
     parser.add_argument('--fastq-output', dest='fastq_out', required=False,
         action='store_true',default=False,
         help='Print output FASTQ reads [requires input FASTQ, default: output is FASTA]')
-    parser.add_argument('--verbose', dest='verbose', required=False,
-        action='store_true',default=False,
-        help='Whether to print the output to the terminal or not')
-    parser.add_argument('--kaiju', dest='kaiju', required=False,
-        action='store_true',default=False,
-        help='Whether this is a kaiju output being processes')
     parser.set_defaults(append=False)
 
     args=parser.parse_args()
@@ -189,7 +208,7 @@ def main():
       kaiju = False
     else:
       kaiju = True
-
+    
     #Start Program
     time = strftime("%m-%d-%Y %H:%M:%S", gmtime())
     if verbose:
@@ -198,7 +217,7 @@ def main():
     #Check input 
     if (len(args.output_file2) == 0) and (len(args.seq_file2) > 0):
         sys.stderr.write("Must specify second output file -o2 for paired input\n")
-        exit(1)
+        sys.exit(1)
 
     #Initialize taxids
     save_taxids = {}
@@ -212,9 +231,9 @@ def main():
         taxid_children = {}
         if args.report_file == "": 
             sys.stderr.write(">> ERROR: --report not specified.")
-            exit(1)
+            sys.exit(1)
         if verbose:
-          sys.stdout.write(">> STEP 0: PARSING REPORT FILE %s\n" % args.report_file)
+            sys.stdout.write(">> STEP 0: PARSING REPORT FILE %s\n" % args.report_file)
         #create tree and save nodes with taxids in the list 
         base_nodes = {} 
         r_file = open(args.report_file,'r')
@@ -280,6 +299,7 @@ def main():
                     if curr_n.children != None:
                         for child in curr_n.children:
                             curr_nodes.append(child)
+                    
     ##############################################################################
     if verbose:
       sys.stdout.write("\t%i taxonomy IDs to parse\n" % len(save_taxids))
@@ -287,34 +307,36 @@ def main():
     #Initialize values
     count_kraken = 0
     read_line = -1
-    exclude_taxids = {}
+    exclude_taxids = {} 
     if args.exclude:
-        exclude_taxids = save_taxids
-        save_taxids = {}
+        exclude_taxids = save_taxids 
+        save_taxids = {} 
     #PROCESS KRAKEN FILE FOR CLASSIFIED READ IDS
     k_file = open(args.kraken_file, 'r')
     if verbose:
-      sys.stdout.write('\t0 reads processed')
-      sys.stdout.flush()
+        sys.stdout.write('\t0 reads processed')
+        sys.stdout.flush()
     #Evaluate each sample in the kraken file
     save_readids = {}
-    save_readids2 = {}
     try:
-      readid_by_taxid, taxid_reads, taxid_by_readid = {}, {}, {}
+      readid_by_taxid, taxid_reads_o1, taxid_reads_o2, taxid_by_readid = {}, {}, {}, {}
       for tid in save_children:
         readid_by_taxid[tid] = []
-        taxid_reads[tid] = []
+        taxid_reads_o1[tid] = []
+        taxid_reads_o2[tid] = []
     except:
-      readid_by_taxid, taxid_reads, taxid_by_readid = {}, {}, {}
+      readid_by_taxid, taxid_reads_o1, taxid_reads_o2, taxid_by_readid = {}, {}, {}, {}
       for tid in save_taxids:
         readid_by_taxid[tid] = []
-        taxid_reads[tid] = []
+        taxid_reads_o1[tid] = []
+        taxid_reads_o2[tid] = []
+    save_readids2 = {} 
     for line in k_file:
         count_kraken += 1
         if verbose:
-          if (count_kraken % 10000 == 0):
-              sys.stdout.write('\r\t%0.2f million reads processed' % float(count_kraken/1000000.))
-              sys.stdout.flush()
+            if (count_kraken % 10000 == 0):
+                sys.stdout.write('\r\t%0.2f million reads processed' % float(count_kraken/1000000.))
+                sys.stdout.flush()
         #Parse line for results
         [tax_id, read_id] = process_kraken_output(line, kaiju)
         if tax_id == -1:
@@ -323,7 +345,7 @@ def main():
         if (tax_id in save_taxids) and not args.exclude:
             save_taxids[tax_id] += 1
             save_readids2[read_id] = 0
-            save_readids[read_id] = 0
+            save_readids[read_id] = 0 
             if kaiju:
               save_readids2[read_id+'/1'] = 0
               save_readids[read_id+'/1'] = 0
@@ -347,14 +369,14 @@ def main():
             else:
                 save_taxids[tax_id] += 1
             save_readids2[read_id] = 0
-            save_readids[read_id] = 0
+            save_readids[read_id] = 0 
         if len(save_readids) >= args.max_reads:
-            break
+            break 
     #Update user
     k_file.close()
     if verbose:
-      sys.stdout.write('\r\t%0.2f million reads processed\n' % float(count_kraken/1000000.))
-      sys.stdout.write('\t%i read IDs saved\n' % len(save_readids))
+        sys.stdout.write('\r\t%0.2f million reads processed\n' % float(count_kraken/1000000.))
+        sys.stdout.write('\t%i read IDs saved\n' % len(save_readids))
     ##############################################################################
     #Sequence files
     seq_file1 = args.seq_file1
@@ -365,17 +387,20 @@ def main():
     else:
         s_file1 = open(seq_file1,'rt')
     first = s_file1.readline()
+    if len(first) == 0:
+        sys.stderr.write("ERROR: sequence file's first line is blank\n")
+        sys.exit(74)
     if first[0] == ">":
         filetype = "fasta"
     elif first[0] == "@":
         filetype = "fastq"
     else:
         sys.stderr.write("ERROR: sequence file must be FASTA or FASTQ\n")
-        exit(1)
+        sys.exit(1)
     s_file1.close()
     if filetype != 'fastq' and args.fastq_out:
         sys.stderr.write('ERROR: for FASTQ output, input file must be FASTQ\n')
-        exit(1)
+        sys.exit(1)
     ####ACTUALLY OPEN FILE
     if(seq_file1[-3:] == '.gz'):
         #Zipped Sequence Files
@@ -388,9 +413,9 @@ def main():
             s_file2 = open(seq_file2, 'r')
     #PROCESS INPUT FILE AND SAVE FASTA FILE
     if verbose:
-      sys.stdout.write(">> STEP 2: READING SEQUENCE FILES AND WRITING READS\n")
-      sys.stdout.write('\t0 read IDs found (0 mill reads processed)')
-      sys.stdout.flush()
+        sys.stdout.write(">> STEP 2: READING SEQUENCE FILES AND WRITING READS\n")
+        sys.stdout.write('\t0 read IDs found (0 mill reads processed)')
+        sys.stdout.flush()
     #Open output file
     if (args.append):
         o_file = open(args.output_file, 'a')
@@ -400,106 +425,122 @@ def main():
         o_file = open(args.output_file, 'w')
         if args.output_file2 != '':
             o_file2 = open(args.output_file2, 'w')
-    #Process SEQUENCE 1 file
+    #Process SEQUENCE 1 file 
     count_seqs = 0
     count_output = 0
     for record in SeqIO.parse(s_file1,filetype):
         count_seqs += 1
         #Print update
         if verbose:
-          if (count_seqs % 1000 == 0):
-              sys.stdout.write('\r\t%i read IDs found (%0.2f mill reads processed)' % (count_output, float(count_seqs/1000000.)))
-              sys.stdout.flush()
-        #Check ID
+            if (count_seqs % 1000 == 0):
+                sys.stdout.write('\r\t%i read IDs found (%0.2f mill reads processed)' % (count_output, float(count_seqs/1000000.)))
+                sys.stdout.flush()
+        #Check ID 
         test_id = str(record.id)
-        #if ("/1" in test_id) or ("/2" in test_id):
-        #    test_id = test_id[:-2]
+        test_id2 = test_id
+        if ("/1" in test_id) or ("/2" in test_id):
+            test_id2 = test_id[:-2]
         #Sequence found
-        if test_id in save_readids:
+        if test_id in save_readids or test_id2 in save_readids:
             count_output += 1
             #Print update
             if verbose:
-              sys.stdout.write('\r\t%i read IDs found (%0.2f mill reads processed)' % (count_output, float(count_seqs/1000000.)))
-              sys.stdout.flush()
-            taxid_reads[taxid_by_readid[test_id]].append(record)
-            # try:
-            #   taxid_reads[taxid_by_readid[test_id]].append(record)
-            # except:
-            #   nothing = True
+                sys.stdout.write('\r\t%i read IDs found (%0.2f mill reads processed)' % (count_output, float(count_seqs/1000000.)))
+                sys.stdout.flush()
+            if test_id in save_readids:
+              taxid_reads_o1[taxid_by_readid[test_id]].append(record)
+            else:
+              taxid_reads_o1[taxid_by_readid[test_id2]].append(record)
             #Save to file
             if args.fastq_out:
                 SeqIO.write(record, o_file, "fastq")
             else:
                 SeqIO.write(record, o_file, "fasta")
-        #If no more reads to find
+        #If no more reads to find 
         if len(save_readids) == count_output:
             break
     try:
-      out1, out2 = args.output_file.split('.')
-      for taxid in taxid_reads:
-        SeqIO.write(taxid_reads[taxid], out1+'_'+str(taxid)+'.'+out2, "fastq")
+      if '_R1' in args.output_file:
+        out1, out2 = args.output_file.split('_R1')
+      else:
+        out1, out2 = args.output_file.split('.')
+        out1 += '.'
+      for taxid in taxid_reads_o1:
+        SeqIO.write(taxid_reads_o1[taxid], out1+'_'+str(taxid)+'_R1'+out2, "fastq")
     except:
       nothing = True
     #Close files
     s_file1.close()
     o_file.close()
     if verbose:
-      sys.stdout.write('\r\t%i read IDs found (%0.2f mill reads processed)\n' % (count_output, float(count_seqs/1000000.)))
-      sys.stdout.flush()
-    count_output = 0
-    count_seqs = 0
+        sys.stdout.write('\r\t%i read IDs found (%0.2f mill reads processed)\n' % (count_output, float(count_seqs/1000000.)))
+        sys.stdout.flush()
     if len(seq_file2) > 0:
+        count_output = 0
+        count_seqs = 0
         if verbose:
-          sys.stdout.write('\t%i read IDs found (%0.2f mill reads processed)' % (count_output, float(count_seqs/1000000.)))
-          sys.stdout.flush()
+            sys.stdout.write('\t%i read IDs found (%0.2f mill reads processed)' % (count_output, float(count_seqs/1000000.)))
+            sys.stdout.flush()
         for record in SeqIO.parse(s_file2, filetype):
             count_seqs += 1
             #Print update
             if verbose:
-              if (count_seqs % 1000 == 0):
-                  sys.stdout.write('\r\t%i read IDs found (%0.2f mill reads processed)' % (count_output, float(count_seqs/1000000.)))
-                  sys.stdout.flush()
+                if (count_seqs % 1000 == 0):
+                    sys.stdout.write('\r\t%i read IDs found (%0.2f mill reads processed)' % (count_output, float(count_seqs/1000000.)))
+                    sys.stdout.flush()
             test_id = str(record.id)
+            test_id2 = test_id
             if ("/1" in test_id) or ("/2" in test_id):
-                test_id = test_id[:-2]
+                test_id2 = test_id[:-2]
             #Sequence found
-            if test_id in save_readids:
+            if test_id in save_readids or test_id2 in save_readids:
                 count_output += 1
                 if verbose:
-                  sys.stdout.write('\r\t%i read IDs found (%0.2f mill reads processed)' % (count_output, float(count_seqs/1000000.)))
-                  sys.stdout.flush()
+                    sys.stdout.write('\r\t%i read IDs found (%0.2f mill reads processed)' % (count_output, float(count_seqs/1000000.)))
+                    sys.stdout.flush()
+                if test_id in save_readids:
+                  taxid_reads_o2[taxid_by_readid[test_id]].append(record)
+                else:
+                  taxid_reads_o2[taxid_by_readid[test_id2]].append(record)
                 #Save to file
                 if args.fastq_out:
                     SeqIO.write(record, o_file2, "fastq")
                 else:
                     SeqIO.write(record, o_file2, "fasta")
-            #If no more reads to find
+            #If no more reads to find 
             if len(save_readids) == count_output:
                 break
+        try:
+          if '_R2' in args.output_file2:
+            out1, out2 = args.output_file2.split('_R2')
+          else:
+            out1, out2 = args.output_file2.split('.')
+            out1 += '.'
+          for taxid in taxid_reads_o2:
+            SeqIO.write(taxid_reads_o2[taxid], out1+'_'+str(taxid)+'_R2'+out2, "fastq")
+        except:
+          nothing = True
         s_file2.close()
         o_file2.close()
         #End Program
         if verbose:
-          sys.stdout.write('\r\t%i read IDs found (%0.2f mill reads processed)\n' % (count_output, float(count_seqs/1000000.)))
-        if count_output == 0:
-          sys.stdout.write('\r\t%i read IDs found (%0.2f mill reads processed)\n' % (count_output, float(count_seqs/1000000.)))
-          sys.stdout.write("\r\tIf you're seeing this output a lot, check whether your files within reads_mapped are empty! You can do that with the command ls -lh")
-          sys.stdout.write("\r\tIf they're all empty, you should check whether your kraken_outraw file sequence names match those in your fastq files.")
-          sys.stdout.flush()
-
+            sys.stdout.write('\r\t%i read IDs found (%0.2f mill reads processed)\n' % (count_output, float(count_seqs/1000000.)))
+    
     #End Program
     if verbose:
-      sys.stdout.write('\t' + str(count_output) + ' reads printed to file\n')
-      sys.stdout.write('\tGenerated file: %s\n' % args.output_file)
-      if args.output_file2 != '':
-          sys.stdout.write('\tGenerated file: %s\n' % args.output_file2)
-      
-      #End of program
-      time = strftime("%m-%d-%Y %H:%M:%S", gmtime())
-      sys.stdout.write("PROGRAM END TIME: " + time + '\n')
-    exit(0)
+        sys.stdout.write('\t' + str(count_output) + ' reads printed to file\n')
+        sys.stdout.write('\tGenerated file: %s\n' % args.output_file)
+        if args.output_file2 != '':
+            sys.stdout.write('\tGenerated file: %s\n' % args.output_file2)
+    
+    #End of program
+    time = strftime("%m-%d-%Y %H:%M:%S", gmtime())
+    if verbose:
+        sys.stdout.write("PROGRAM END TIME: " + time + '\n')
+    sys.exit(0)
 
 #################################################################################
+
 if __name__ == "__main__":
     main()
 

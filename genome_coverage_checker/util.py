@@ -19,7 +19,7 @@ def update_checkpoint(output_dir, cp):
   return cp
   
 
-def run_initial_checks(wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, genome_dir, bowtie2_db_dir, coverage_program, skip_coverage, run_kaiju, run_kraken):
+def run_initial_checks(wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, genome_dir, bowtie2_db_dir, coverage_program, skip_coverage, run_kaiju, run_kraken, paired):
   #check all folders exist
   if run_kaiju:
     all_folders = [fastq_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder]
@@ -66,11 +66,16 @@ def run_initial_checks(wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_
   #check all input files exist
   if run_kraken:
     for sample_name in samples:
-      fq = fastq_dir+sample_name+'.fastq'
       krep = kraken_kreport_dir+sample_name+'.kreport'
       krep2 = kraken_kreport_dir+sample_name+'_0.0.kreport'
       kraw = kraken_outraw_dir+sample_name+'.kraken'
-      for f in [fq, [krep, krep2], kraw]:
+      if paired:
+        fq1, fq2 = fastq_dir+sample_name+'_R1.fastq', fastq_dir+sample_name+'_R2.fastq'
+        files = [fq1, fq2, [krep, krep2], kraw]
+      else:
+        fq = fastq_dir+sample_name+'.fastq'
+        files = [fq, [krep, krep2], kraw]
+      for f in files:
         if isinstance(f, str):
           if not os.path.exists(f):
             sys.exit("This file doesn't exist: "+f)
@@ -79,10 +84,15 @@ def run_initial_checks(wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_
             sys.exit("Neither of these files exists: "+f[0]+", "+f[1])
   else:
     for sample_name in samples:
-      fq = fastq_dir+sample_name+'.fastq'
       kraw = kaiju_outraw_dir+sample_name+'.fastq.out'
       kraw2 = kaiju_outraw_dir+sample_name+'.out'
-      for f in [fq, [kraw, kraw2]]:
+      if paired:
+        fq1, fq2 = fastq_dir+sample_name+'_R1.fastq', fastq_dir+sample_name+'_R2.fastq'
+        files = [fq1, fq2, [krep, krep2]]
+      else:
+        fq = fastq_dir+sample_name+'.fastq'
+        files = [fq, [krep, krep2]]
+      for f in files:
         if isinstance(f, str):
           if not os.path.exists(f):
             sys.exit("This file doesn't exist: "+f)
@@ -103,7 +113,7 @@ def run_initial_checks(wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_
         w = f.write(sp+'\n')
   else:
     taxid_name = {}
-  return wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, run_kaiju, run_kraken
+  return wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, run_kaiju, run_kraken, paired
 
 def get_kreports(samples, kraken_kreport_dir, output_dir, md, read_lim, read_mean, project_name, taxid_name):
   kreports, taxids_kreports = [], {}
@@ -285,7 +295,7 @@ def download_genomes(taxid, assembly_folder, output_dir, all_domains, representa
     write_file(output_dir+'no_genome.txt', no_genome)
   return got_genomes
 
-def extract_reads(taxid, output_dir, samples, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, n_proc):
+def extract_reads(taxid, output_dir, samples, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, n_proc, paired):
   all_taxid = [tax for tax in taxid]
   this_taxid, command_list = [], []
   for l in range(len(taxid)):
@@ -296,8 +306,14 @@ def extract_reads(taxid, output_dir, samples, fastq_dir, kraken_kreport_dir, kra
       for sample in samples:
         command = 'python '+dirname(abspath(__file__))+'/extract_kraken_reads_modified.py '
         command += '-k '+kraken_outraw_dir+'/'+sample+'.kraken '
-        command += '-s '+fastq_dir+'/'+sample+'.fastq '
-        command += '-o '+output_dir+'/reads_mapped/'+sample+'.fq '
+        if paired:
+          command += '-s1 '+fastq_dir+'/'+sample+'_R1.fastq '
+          command += '-s2 '+fastq_dir+'/'+sample+'_R2.fastq '
+          command += '-o '+output_dir+'/reads_mapped/'+sample+'_R1.fq '
+          command += '-o2 '+output_dir+'/reads_mapped/'+sample+'_R2.fq '
+        else:
+          command += '-s '+fastq_dir+'/'+sample+'.fastq '
+          command += '-o '+output_dir+'/reads_mapped/'+sample+'.fq '
         command += '-t '+taxid_list+' --include-children '
         if os.path.exists(kraken_kreport_dir+sample+'.kreport'):
           command += '--report '+kraken_kreport_dir+sample+'.kreport --fastq-output'
@@ -373,6 +389,19 @@ def combine_convert_files(taxid, output_dir, samples, group_samples, n_proc, dup
   write_file(output_dir+'run_convert_fastq_commands.txt', convert_commands)
   os.system('python '+dirname(abspath(__file__))+'/run_commands_multiprocessing.py --commands '+output_dir+'run_convert_fastq_commands.txt --processors '+str(n_proc))
   return all_files
+
+def combine_paired_files(taxid, output_dir, samples, n_proc):
+  combine_commands = []
+  for sample in samples:
+    for tax in taxid:
+      if os.path.exists(output_dir+'reads_mapped/'+sample+'_'+tax+'_R1.fq') and os.path.exists(output_dir+'reads_mapped/'+sample+'_'+tax+'_R2.fq'):
+        command = 'cat '+output_dir+'reads_mapped/'+sample+'_'+tax+'_R1.fq '+output_dir+'reads_mapped/'+sample+'_'+tax+'_R2.fq >> '+output_dir+'reads_mapped/'+sample+'_'+tax+'.fq'
+        combine_commands.append(command)
+  
+  write_file(output_dir+'run_combine_paired_files_commands.txt', combine_commands)
+  os.system('python '+dirname(abspath(__file__))+'/run_commands_multiprocessing.py --commands '+output_dir+'run_combine_paired_files_commands.txt --processors '+str(n_proc))
+      
+  return
 
 def combine_convert_files_paf(taxid, output_dir, samples, group_samples, n_proc, genome_dir, duplicate_check=False, grouped_samples_only=False, no_grouped_samples=False):
   combine_commands = []
@@ -493,7 +522,7 @@ def run_bowtie2(all_files, taxid, output_dir, n_proc, bowtie2_setting, bowtie2_d
     bowtie2_file = bowtie2_db_dir+tid+'_'+taxid[tid]
     out_name = output_dir+'/bowtie2_mapped/'+file.split('/')[-1]
     out_names.append(out_name)
-    command_bt2 = 'bowtie2 --quiet --threads 1 --'+bowtie2_setting+' -x '+bowtie2_file+ ' -U '+file+'.fq --no-unal -S '+out_name+'.sam >> '+output_dir+'/bowtie2_terminal_output.txt'
+    command_bt2 = 'bowtie2 --quiet --threads 1 --'+bowtie2_setting+' -x '+bowtie2_file+ ' -U '+file+'.fq --no-unal -S '+out_name+'.sam >> '+output_dir+'/bowtie2_terminal_output.txt 2> >(grep -v "Failed to launch x86-64-v3" >&2)'
     bowtie2_commands.append(command_bt2)
   write_file(output_dir+'run_bowtie2_commands.txt', bowtie2_commands)
   os.system('python '+dirname(abspath(__file__))+'/run_commands_multiprocessing.py --commands '+output_dir+'run_bowtie2_commands.txt --processors '+str(n_proc))
@@ -709,7 +738,7 @@ def collate_output(all_files, taxid, output_dir, kreports, samples, group_sample
   out_df.to_csv(output_dir+'coverage_checker_output.tsv', sep='\t', index=False)
   return
 
-def collate_output_paf(all_files, taxid, output_dir, kreports, samples, group_samples, skip_coverage, coverage_program, genome_dir, run_kaiju, grouped_samples_only=False, no_grouped_samples=False):
+def collate_output_paf(all_files, taxid, output_dir, kreports, samples, group_samples, skip_coverage, coverage_program, genome_dir, run_kaiju, paired, grouped_samples_only=False, no_grouped_samples=False):
   all_files = [f.split('/')[-1] for f in all_files]
   #get coverage outputs
   bowtie2_out, minimap2_out = {}, {}
@@ -842,6 +871,8 @@ def collate_output_paf(all_files, taxid, output_dir, kreports, samples, group_sa
             this_sample.append(''), this_sample.append(''), this_sample.append('')
       all_out.append(this_sample)
   out_df = pd.DataFrame(all_out, columns=first_row)
+  if paired:
+    out_df['Kraken reads assigned'] = out_df['Kraken reads assigned']*2
   out_df.to_csv(output_dir+'coverage_checker_output.tsv', sep='\t', index=False)
   return
 

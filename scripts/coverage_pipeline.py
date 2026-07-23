@@ -16,6 +16,8 @@ parser.add_argument('--processors', dest='n_proc', default=1,
                     help="Number of processors to use for all multiprocessing steps where this is possible")
 parser.add_argument('--fastq_dir', dest='fastq_dir', default=None,
                     help="The directory containing the fastq files")
+parser.add_argument('--paired', dest='paired', default=False, action='store_true',
+                    help="An option for providing separate forward and reverse read fastq files.")
 parser.add_argument('--kraken_kreport_dir', dest='kraken_kreport_dir', default=None,
                     help="The directory containing the kraken kreport files")
 parser.add_argument('--kraken_outraw_dir', dest='kraken_outraw_dir', default=None,
@@ -69,7 +71,7 @@ parser.add_argument('--kaiju_outraw_dir', dest='kaiju_outraw_dir', default=None,
 
 #Read in the command line arguments
 args = parser.parse_args()
-n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, genome_dir, bowtie2_db_dir  = int(args.n_proc), args.fastq_dir, args.kraken_kreport_dir, args.kraken_outraw_dir, args.kaiju_table, args.kaiju_outraw_dir, args.output_dir, args.genome_dir, args.bowtie2_db_dir
+n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, genome_dir, bowtie2_db_dir, paired  = int(args.n_proc), args.fastq_dir, args.kraken_kreport_dir, args.kraken_outraw_dir, args.kaiju_table, args.kaiju_outraw_dir, args.output_dir, args.genome_dir, args.bowtie2_db_dir, args.paired
 if '.' in output_dir:
   sys.exit("No . can be in the output_dir name. Please use only _ and -")
 if kraken_kreport_dir == None and kaiju_table == None:
@@ -140,14 +142,14 @@ if cp != '0':
   if os.path.exists(output_dir+'/pickle_intermediates/args.pickle'):
     with open(output_dir+'/pickle_intermediates/args.pickle', 'rb') as f:
       all_args = pickle.load(f)
-    wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, all_domains, representative_only, skip_coverage, skip_cleanup, duplicate_check, bowtie2_setting, grouped_samples_only, no_grouped_samples, coverage_program, run_kaiju, run_kraken = all_args
+    wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, all_domains, representative_only, skip_coverage, skip_cleanup, duplicate_check, bowtie2_setting, grouped_samples_only, no_grouped_samples, coverage_program, run_kaiju, run_kraken, paired = all_args
     
 # 1. Run the initial checks
 if cp == '0':
   sys.stdout.write("Running initial checks\n")
   sys.stdout.flush()
-  wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, run_kaiju, run_kraken = run_initial_checks(wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, genome_dir, bowtie2_db_dir, coverage_program, skip_coverage, run_kaiju, run_kraken) #run all of the initial checks to ensure that all of the folders and files exist before starting to try and run anything
-  all_args = [wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, all_domains, representative_only, skip_coverage, skip_cleanup, duplicate_check, bowtie2_setting, grouped_samples_only, no_grouped_samples, coverage_program, run_kaiju, run_kraken]
+  wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, run_kaiju, run_kraken, paired = run_initial_checks(wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, genome_dir, bowtie2_db_dir, coverage_program, skip_coverage, run_kaiju, run_kraken, paired) #run all of the initial checks to ensure that all of the folders and files exist before starting to try and run anything
+  all_args = [wd, n_proc, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, kaiju_table, kaiju_outraw_dir, output_dir, assembly_folder, read_lim, read_mean, sample_metadata, species, project_name, rerun, md, samples, taxid_name, genome_dir, bowtie2_db_dir, all_domains, representative_only, skip_coverage, skip_cleanup, duplicate_check, bowtie2_setting, grouped_samples_only, no_grouped_samples, coverage_program, run_kaiju, run_kraken, paired]
   save_pickle(all_args, output_dir+'/pickle_intermediates/args.pickle')
   cp = update_checkpoint(output_dir, "1_initial_checks_run")
   sys.stdout.write("Completed check-point 1 initial checks\n\n")
@@ -214,7 +216,7 @@ if cp == "3_downloaded_genomes":
   sys.stdout.write("Extracting reads for all taxonomy ID's\n")
   sys.stdout.flush()
   if run_kraken:
-    extract_reads(taxid, output_dir, samples, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, n_proc)
+    extract_reads(taxid, output_dir, samples, fastq_dir, kraken_kreport_dir, kraken_outraw_dir, n_proc, paired)
   else:
     extract_reads_kaiju(taxid, output_dir, samples, fastq_dir, kaiju_outraw_dir, n_proc)
   cp = update_checkpoint(output_dir, "4_extracted_reads")
@@ -227,6 +229,10 @@ else:
 
 # 5. Combine the files for each taxonomy ID (across multiple samples for the sample groupings)
 if cp == "4_extracted_reads":
+  if paired:
+    sys.stdout.write("Combining paired read files for each taxonomy ID and sample\n")
+    sys.stdout.flush()
+    combine_paired_files(taxid, output_dir, samples, n_proc)
   sys.stdout.write("Combining files for each taxonomy ID\n")
   sys.stdout.flush()
   all_files = combine_convert_files_paf(taxid, output_dir, samples, group_samples, n_proc, genome_dir, duplicate_check, grouped_samples_only, no_grouped_samples)
@@ -298,7 +304,7 @@ else:
 if cp == "8_got_coverage":
   sys.stdout.write("Collating all output\n")
   sys.stdout.flush()
-  collate_output_paf(all_files, taxid, output_dir, kreports, samples, group_samples, skip_coverage, coverage_program, genome_dir, run_kaiju, grouped_samples_only, no_grouped_samples)
+  collate_output_paf(all_files, taxid, output_dir, kreports, samples, group_samples, skip_coverage, coverage_program, genome_dir, run_kaiju, paired, grouped_samples_only, no_grouped_samples)
   cp = update_checkpoint(output_dir, "9_collate_output")
   sys.stdout.write("Completed check-point 9 collating output\n\n")
   sys.stdout.flush()
