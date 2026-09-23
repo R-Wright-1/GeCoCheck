@@ -1,4 +1,4 @@
-name: GeCoCheck-v1.0
+name: GeCoCheck-v1.0.1
 
 channels:
 - conda-forge
@@ -11,7 +11,7 @@ dependencies:
 - pandas
 - biopython
 - samtools
-- bowtie2
+- bowtie2==2.5.4
 - matplotlib
 - minimap2
 - setuptools==66.1.1
