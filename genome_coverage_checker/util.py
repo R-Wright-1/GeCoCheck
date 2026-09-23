@@ -635,7 +635,7 @@ def get_coverage_across_genomes_paf(all_files, taxid, genome_dir, output_dir, n_
   return
 
 
-def collate_output(all_files, taxid, output_dir, kreports, samples, group_samples, skip_bowtie2, skip_coverage, grouped_samples_only=False, no_grouped_samples=False):
+def collate_output(all_files, taxid, output_dir, kreports, samples, group_samples, skip_bowtie2, skip_coverage, grouped_samples_only=False, no_grouped_samples=False, paired=False):
   all_files = [f.split('/')[-1] for f in all_files]
   #get  outputs
   quast_out = {}
@@ -874,6 +874,7 @@ def collate_output_paf(all_files, taxid, output_dir, kreports, samples, group_sa
   out_df = pd.DataFrame(all_out, columns=first_row)
   if paired:
     out_df['Kraken reads assigned'] = out_df['Kraken reads assigned']*2
+    out_df['Proportion kraken reads mapped with Bowtie2'] = out_df['Proportion kraken reads mapped with Bowtie2']/2
   out_df.to_csv(output_dir+'coverage_checker_output.tsv', sep='\t', index=False)
   return
 

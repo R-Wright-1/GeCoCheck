@@ -103,7 +103,7 @@ def plot_genome_coverage(axes_genome, axes_id, sample_name, taxid, length, progr
   ids = [float(n) for n in ids]
   plt.sca(axes_id)
   sc = plt.scatter(ids, np.random.normal(0, 0.12, len(ids)), color='#F4D03F', alpha=0.01)
-  box = plt.boxplot(ids, positions=[0], widths=0.8, vert=False, showfliers=False)
+  box = plt.boxplot(ids, positions=[0], widths=0.8, orientation='horizontal', showfliers=False)
   for item in ['boxes', 'whiskers', 'fliers', 'medians', 'caps']: plt.setp(box[item], color='k')
   tx = plt.text(np.median(ids), 0.65, str(round(np.median(ids), 3)), ha='center', va='center')
   xl = plt.xlim([68, 102]), plt.xticks([]), plt.yticks([]), plt.ylim([-0.5, 0.9])
